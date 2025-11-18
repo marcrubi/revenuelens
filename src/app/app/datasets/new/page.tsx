@@ -7,6 +7,79 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read file."));
+    reader.onabort = () => reject(new Error("File reading was aborted."));
+    reader.onload = () => resolve(reader.result as string);
+    reader.readAsText(file);
+  });
+}
+
+type ParsedRow = {
+  date: string;
+  amount: number;
+  product: string | null;
+  category: string | null;
+  customer_id: string | null;
+};
+
+function parseCsv(text: string): ParsedRow[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) return [];
+
+  const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
+
+  const idxDate = header.indexOf("date");
+  const idxAmount = header.indexOf("amount");
+  const idxProduct = header.indexOf("product");
+  const idxCategory = header.indexOf("category");
+  const idxCustomerId =
+    header.indexOf("customerid") !== -1
+      ? header.indexOf("customerid")
+      : header.indexOf("customer_id");
+
+  if (idxDate === -1 || idxAmount === -1) {
+    return [];
+  }
+
+  const rows: ParsedRow[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const raw = lines[i];
+    if (!raw) continue;
+
+    const cols = raw.split(",").map((c) => c.trim());
+    const date = cols[idxDate] ?? "";
+    const amountRaw = cols[idxAmount] ?? "";
+
+    if (!date || !amountRaw) continue;
+
+    const amount = Number(amountRaw);
+    if (!Number.isFinite(amount)) continue;
+
+    const product = idxProduct !== -1 ? cols[idxProduct] || null : null;
+    const category = idxCategory !== -1 ? cols[idxCategory] || null : null;
+    const customer_id =
+      idxCustomerId !== -1 ? cols[idxCustomerId] || null : null;
+
+    rows.push({
+      date,
+      amount,
+      product,
+      category,
+      customer_id,
+    });
+  }
+
+  return rows;
+}
+
 export default function NewDatasetPage() {
   const router = useRouter();
 
@@ -39,7 +112,7 @@ export default function NewDatasetPage() {
     setSubmitting(true);
 
     try {
-      // 1) Obtener usuario actual
+      // 1) Usuario actual
       const { data: authData, error: authError } =
         await supabase.auth.getUser();
 
@@ -50,12 +123,12 @@ export default function NewDatasetPage() {
 
       const userId = authData.user.id;
 
-      // 2) Obtener business_id desde profiles
+      // 2) Perfil -> business_id
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("business_id")
         .eq("id", userId)
-        .single();
+        .maybeSingle();
 
       if (profileError) {
         setError(
@@ -71,21 +144,58 @@ export default function NewDatasetPage() {
         return;
       }
 
-      // 3) Insertar dataset en la tabla datasets
-      const { error: insertError } = await supabase.from("datasets").insert({
-        name: name.trim(),
-        business_id: profile.business_id,
-      });
+      // 3) Crear dataset
+      const { data: dataset, error: insertError } = await supabase
+        .from("datasets")
+        .insert({
+          name: name.trim(),
+          business_id: profile.business_id,
+        })
+        .select("id")
+        .single();
 
-      if (insertError) {
-        setError(insertError.message);
+      if (insertError || !dataset) {
+        setError(insertError?.message ?? "Failed to create dataset.");
         return;
       }
 
-      // 4) Éxito → redirigimos a la lista de datasets
-      setSuccess("Dataset created successfully.");
+      const datasetId = dataset.id;
+
+      // 4) Leer y parsear CSV
+      const text = await readFileAsText(file);
+      const parsed = parseCsv(text);
+
+      if (parsed.length === 0) {
+        setError(
+          "We created the dataset but could not find valid rows in the CSV. Make sure it has at least 'date' and 'amount' columns.",
+        );
+        return;
+      }
+
+      // 5) Insertar ventas
+      const salesToInsert = parsed.map((row) => ({
+        dataset_id: datasetId,
+        date: row.date,
+        amount: row.amount,
+        product: row.product,
+        category: row.category,
+        customer_id: row.customer_id,
+      }));
+
+      const { error: salesError } = await supabase
+        .from("sales")
+        .insert(salesToInsert);
+
+      if (salesError) {
+        setError(
+          "The dataset was created, but we couldn't import the sales data.",
+        );
+        return;
+      }
+
+      setSuccess("Dataset created and sales imported successfully.");
       router.push("/app/datasets");
-    } catch (err) {
+    } catch {
       setError("Unexpected error while creating dataset.");
     } finally {
       setSubmitting(false);

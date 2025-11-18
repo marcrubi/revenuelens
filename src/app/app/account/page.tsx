@@ -1,7 +1,130 @@
 // src/app/app/account/page.tsx
+"use client";
+
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { supabase } from "@/lib/supabaseClient";
+import type { User } from "@supabase/supabase-js";
+
+type Profile = {
+  full_name: string | null;
+  business_id: string | null;
+};
+
+type Business = {
+  name: string;
+  created_at: string | null;
+};
 
 export default function AccountPage() {
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [business, setBusiness] = useState<Business | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAccount() {
+      try {
+        // 1) Usuario actual
+        const { data: authData, error: authError } =
+          await supabase.auth.getUser();
+
+        if (authError || !authData?.user) {
+          if (!isMounted) return;
+          setError("You need to be signed in to view your account.");
+          setLoading(false);
+          return;
+        }
+
+        const currentUser = authData.user;
+        if (!isMounted) return;
+        setUser(currentUser);
+
+        // 2) Perfil
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("full_name, business_id")
+          .eq("id", currentUser.id)
+          .maybeSingle();
+
+        if (!isMounted) return;
+
+        if (profileError) {
+          setError("We couldn't load your profile.");
+          setLoading(false);
+          return;
+        }
+
+        setProfile(profileData ?? { full_name: null, business_id: null });
+
+        // 3) Business si hay business_id
+        if (profileData?.business_id) {
+          const { data: businessData, error: businessError } = await supabase
+            .from("businesses")
+            .select("name, created_at")
+            .eq("id", profileData.business_id)
+            .maybeSingle();
+
+          if (!isMounted) return;
+
+          if (businessError) {
+            setError("We couldn't load your workspace details.");
+            setLoading(false);
+            return;
+          }
+
+          setBusiness(businessData ?? null);
+        }
+
+        setLoading(false);
+      } catch {
+        if (!isMounted) return;
+        setError("Unexpected error while loading your account.");
+        setLoading(false);
+      }
+    }
+
+    loadAccount();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const email = user?.email ?? "—";
+  const fullName = profile?.full_name || null;
+  const businessName = business?.name ?? "My workspace";
+  const businessCreatedAt = business?.created_at
+    ? new Date(business.created_at).toISOString().slice(0, 10)
+    : "—";
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[200px] items-center justify-center">
+        <p className="text-sm text-slate-500">Loading your account…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Account</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Your profile and workspace information.
+          </p>
+        </div>
+        <Card className="p-4">
+          <p className="text-sm text-red-600">{error}</p>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* HEADER */}
@@ -24,13 +147,13 @@ export default function AccountPage() {
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex justify-between text-xs">
               <span className="text-slate-500">Full name</span>
-              <span className="font-medium text-slate-800">Marc (demo)</span>
+              <span className="font-medium text-slate-800">
+                {fullName ?? "Not set"}
+              </span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-slate-500">Email</span>
-              <span className="font-medium text-slate-800">
-                marc@example.com
-              </span>
+              <span className="font-medium text-slate-800">{email}</span>
             </div>
           </div>
 
@@ -50,19 +173,19 @@ export default function AccountPage() {
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex justify-between text-xs">
               <span className="text-slate-500">Business name</span>
-              <span className="font-medium text-slate-800">Demo business</span>
+              <span className="font-medium text-slate-800">{businessName}</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-slate-500">Created at</span>
               <span className="font-medium text-slate-800">
-                2025-01-01 (demo)
+                {businessCreatedAt}
               </span>
             </div>
           </div>
 
           <p className="mt-4 text-[11px] text-slate-500">
-            Later this will be linked to your real business entity and billing
-            details.
+            This workspace is automatically linked to your datasets and sales
+            data.
           </p>
         </Card>
       </div>

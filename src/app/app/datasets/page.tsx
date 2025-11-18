@@ -15,6 +15,7 @@ type Dataset = {
 
 export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [rowCounts, setRowCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,6 +24,8 @@ export default function DatasetsPage() {
 
     async function loadDatasets() {
       try {
+        setError(null);
+
         const { data, error } = await supabase
           .from("datasets")
           .select("id, name, created_at")
@@ -33,18 +36,38 @@ export default function DatasetsPage() {
         if (error) {
           setError(error.message);
           setDatasets([]);
+          setLoading(false);
           return;
         }
 
-        setDatasets(data ?? []);
-      } catch (err) {
+        const datasetsData = data ?? [];
+        setDatasets(datasetsData);
+
+        // Contar filas en sales por dataset
+        const counts: Record<string, number> = {};
+
+        await Promise.all(
+          datasetsData.map(async (dataset) => {
+            const { count, error: countError } = await supabase
+              .from("sales")
+              .select("id", { count: "exact", head: true })
+              .eq("dataset_id", dataset.id);
+
+            if (!countError && typeof count === "number") {
+              counts[dataset.id] = count;
+            }
+          }),
+        );
+
+        if (!isMounted) return;
+
+        setRowCounts(counts);
+        setLoading(false);
+      } catch {
         if (!isMounted) return;
         setError("Unexpected error while loading datasets.");
         setDatasets([]);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     }
 
@@ -114,22 +137,31 @@ export default function DatasetsPage() {
                 </tr>
               </thead>
               <tbody className="text-xs text-slate-700">
-                {datasets.map((dataset) => (
-                  <tr
-                    key={dataset.id}
-                    className="border-b border-slate-100 last:border-b-0"
-                  >
-                    <td className="py-2 align-middle">
-                      <span className="font-medium">{dataset.name}</span>
-                    </td>
-                    <td className="py-2 align-middle">
-                      <span className="text-slate-500">
-                        {formatDate(dataset.created_at)}
-                      </span>
-                    </td>
-                    <td className="py-2 text-right align-middle">—</td>
-                  </tr>
-                ))}
+                {datasets.map((dataset) => {
+                  const rows =
+                    rowCounts[dataset.id] !== undefined
+                      ? rowCounts[dataset.id]
+                      : 0;
+
+                  return (
+                    <tr
+                      key={dataset.id}
+                      className="border-b border-slate-100 last:border-b-0"
+                    >
+                      <td className="py-2 align-middle">
+                        <span className="font-medium">{dataset.name}</span>
+                      </td>
+                      <td className="py-2 align-middle">
+                        <span className="text-slate-500">
+                          {formatDate(dataset.created_at)}
+                        </span>
+                      </td>
+                      <td className="py-2 text-right align-middle">
+                        {rows.toLocaleString("en-US")}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
