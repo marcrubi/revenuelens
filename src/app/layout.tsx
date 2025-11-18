@@ -1,4 +1,4 @@
-// src/app/(marketing)/layout.tsx
+// src/app/layout.tsx
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
