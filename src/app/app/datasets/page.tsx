@@ -1,30 +1,67 @@
 // src/app/app/datasets/page.tsx
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/lib/supabaseClient";
 
-const MOCK_DATASETS = [
-  {
-    id: "1",
-    name: "Main coffee shop",
-    createdAt: "2025-01-10",
-    rows: 12843,
-  },
-  {
-    id: "2",
-    name: "Online store",
-    createdAt: "2025-02-03",
-    rows: 8421,
-  },
-  {
-    id: "3",
-    name: "Pop-up events 2024",
-    createdAt: "2024-11-21",
-    rows: 2134,
-  },
-];
+type Dataset = {
+  id: string;
+  name: string;
+  created_at: string | null;
+};
 
 export default function DatasetsPage() {
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadDatasets() {
+      try {
+        const { data, error } = await supabase
+          .from("datasets")
+          .select("id, name, created_at")
+          .order("created_at", { ascending: false });
+
+        if (!isMounted) return;
+
+        if (error) {
+          setError(error.message);
+          setDatasets([]);
+          return;
+        }
+
+        setDatasets(data ?? []);
+      } catch (err) {
+        if (!isMounted) return;
+        setError("Unexpected error while loading datasets.");
+        setDatasets([]);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadDatasets();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const formatDate = (value: string | null) => {
+    if (!value) return "—";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toISOString().slice(0, 10);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -41,51 +78,61 @@ export default function DatasetsPage() {
         </Button>
       </div>
 
-      {/* Table */}
+      {/* Table / states */}
       <Card className="p-4">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-semibold">Your datasets</p>
-          <p className="text-xs text-slate-400">
-            {MOCK_DATASETS.length} dataset
-            {MOCK_DATASETS.length !== 1 ? "s" : ""} total
+          {!loading && !error && (
+            <p className="text-xs text-slate-400">
+              {datasets.length} dataset
+              {datasets.length !== 1 ? "s" : ""} total
+            </p>
+          )}
+        </div>
+
+        {loading ? (
+          <p className="py-6 text-center text-xs text-slate-400">
+            Loading datasets…
           </p>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-xs text-slate-500">
-                <th className="py-2 text-left font-medium">Name</th>
-                <th className="py-2 text-left font-medium">Created at</th>
-                <th className="py-2 text-right font-medium">Rows</th>
-              </tr>
-            </thead>
-            <tbody className="text-xs text-slate-700">
-              {MOCK_DATASETS.map((dataset) => (
-                <tr
-                  key={dataset.id}
-                  className="border-b border-slate-100 last:border-b-0"
-                >
-                  <td className="py-2 align-middle">
-                    <span className="font-medium">{dataset.name}</span>
-                  </td>
-                  <td className="py-2 align-middle">
-                    <span className="text-slate-500">{dataset.createdAt}</span>
-                  </td>
-                  <td className="py-2 align-middle text-right">
-                    {dataset.rows.toLocaleString("en-US")}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {MOCK_DATASETS.length === 0 && (
-          <p className="mt-6 text-center text-xs text-slate-400">
+        ) : error ? (
+          <p className="py-6 text-center text-xs text-red-600">
+            We couldn&apos;t load your datasets: {error}
+          </p>
+        ) : datasets.length === 0 ? (
+          <p className="py-6 text-center text-xs text-slate-400">
             You don&apos;t have any datasets yet. Create one to start exploring
             your sales.
           </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs text-slate-500">
+                  <th className="py-2 text-left font-medium">Name</th>
+                  <th className="py-2 text-left font-medium">Created at</th>
+                  <th className="py-2 text-right font-medium">Rows</th>
+                </tr>
+              </thead>
+              <tbody className="text-xs text-slate-700">
+                {datasets.map((dataset) => (
+                  <tr
+                    key={dataset.id}
+                    className="border-b border-slate-100 last:border-b-0"
+                  >
+                    <td className="py-2 align-middle">
+                      <span className="font-medium">{dataset.name}</span>
+                    </td>
+                    <td className="py-2 align-middle">
+                      <span className="text-slate-500">
+                        {formatDate(dataset.created_at)}
+                      </span>
+                    </td>
+                    <td className="py-2 text-right align-middle">—</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
     </div>

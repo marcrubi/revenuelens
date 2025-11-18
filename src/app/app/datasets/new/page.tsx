@@ -2,17 +2,21 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function NewDatasetPage() {
+  const router = useRouter();
+
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     setSuccess(null);
@@ -32,17 +36,60 @@ export default function NewDatasetPage() {
       return;
     }
 
-    // MVP: de momento no subimos nada a Supabase.
-    // Más adelante aquí llamaremos a la API / Supabase.
     setSubmitting(true);
 
-    // Simulación rápida de procesamiento local
-    setTimeout(() => {
+    try {
+      // 1) Obtener usuario actual
+      const { data: authData, error: authError } =
+        await supabase.auth.getUser();
+
+      if (authError || !authData?.user) {
+        setError("You need to be signed in to create a dataset.");
+        return;
+      }
+
+      const userId = authData.user.id;
+
+      // 2) Obtener business_id desde profiles
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("business_id")
+        .eq("id", userId)
+        .single();
+
+      if (profileError) {
+        setError(
+          "We couldn't load your profile. Please try again or contact support.",
+        );
+        return;
+      }
+
+      if (!profile?.business_id) {
+        setError(
+          "Your profile is not linked to a business yet. Please contact support or try again later.",
+        );
+        return;
+      }
+
+      // 3) Insertar dataset en la tabla datasets
+      const { error: insertError } = await supabase.from("datasets").insert({
+        name: name.trim(),
+        business_id: profile.business_id,
+      });
+
+      if (insertError) {
+        setError(insertError.message);
+        return;
+      }
+
+      // 4) Éxito → redirigimos a la lista de datasets
+      setSuccess("Dataset created successfully.");
+      router.push("/app/datasets");
+    } catch (err) {
+      setError("Unexpected error while creating dataset.");
+    } finally {
       setSubmitting(false);
-      setSuccess(
-        "Dataset validated locally. In the next step we will connect this to Supabase.",
-      );
-    }, 400);
+    }
   };
 
   return (
@@ -68,7 +115,11 @@ export default function NewDatasetPage() {
               className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/5"
               placeholder="e.g. Main coffee shop 2024"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => {
+                setName(event.target.value);
+                if (error) setError(null);
+                if (success) setSuccess(null);
+              }}
             />
             <p className="text-[11px] text-slate-500">
               Choose a name that makes it easy to recognize this dataset later.
@@ -107,7 +158,7 @@ export default function NewDatasetPage() {
           {/* Actions */}
           <div className="pt-2">
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Validating…" : "Upload & process"}
+              {submitting ? "Creating dataset…" : "Upload & process"}
             </Button>
           </div>
         </form>

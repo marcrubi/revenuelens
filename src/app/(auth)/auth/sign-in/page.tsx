@@ -1,13 +1,17 @@
 // src/app/(auth)/auth/sign-in/page.tsx
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 
 type Mode = "methods" | "email";
+
+function isValidEmail(value: string) {
+  return /\S+@\S+\.\S+/.test(value);
+}
 
 export default function SignInPage() {
   const [mode, setMode] = useState<Mode>("methods");
@@ -17,27 +21,66 @@ export default function SignInPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Si ya está logueado, mandarlo al portal
+  useEffect(() => {
+    let isMounted = true;
+
+    async function checkSession() {
+      const { data } = await supabase.auth.getUser();
+      if (!isMounted) return;
+      if (data?.user) {
+        router.replace("/app/dashboard");
+      }
+    }
+
+    checkSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
 
-    // sanity check extra aunque los inputs tengan required
-    if (!email || !password) {
-      setError("Please fill in both email and password.");
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      setError("Please enter your email.");
+      return;
+    }
+
+    if (!isValidEmail(trimmedEmail)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
+    if (!password) {
+      setError("Please enter your password.");
       return;
     }
 
     setIsLoading(true);
 
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: trimmedEmail,
       password,
     });
 
     setIsLoading(false);
 
     if (error) {
-      setError(error.message);
+      // Mensajes amigables en lugar del texto crudo de Supabase
+      const message = error.message.toLowerCase();
+      if (
+        message.includes("invalid login credentials") ||
+        message.includes("invalid email or password")
+      ) {
+        setError("Invalid email or password.");
+      } else {
+        setError("We couldn't sign you in. Please try again.");
+      }
       return;
     }
 
@@ -119,14 +162,13 @@ export default function SignInPage() {
       </div>
 
       {/* Formulario */}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div className="space-y-1.5">
           <label className="block text-sm font-medium text-slate-700">
             Email
           </label>
           <input
             type="email"
-            required
             autoComplete="email"
             value={email}
             onChange={(e) => {
@@ -143,7 +185,6 @@ export default function SignInPage() {
           </label>
           <input
             type="password"
-            required
             minLength={6}
             autoComplete="current-password"
             value={password}
@@ -153,6 +194,14 @@ export default function SignInPage() {
             }}
             className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
           />
+          <div className="mt-1 text-right text-xs">
+            <Link
+              href="/auth/reset-password"
+              className="text-slate-500 hover:text-slate-700 hover:underline"
+            >
+              Forgot your password?
+            </Link>
+          </div>
         </div>
 
         {error && <p className="text-sm text-red-500">{error}</p>}

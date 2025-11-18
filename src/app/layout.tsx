@@ -1,16 +1,23 @@
 // src/app/layout.tsx
 import type { Metadata } from "next";
+import "./globals.css";
+import { Inter } from "next/font/google";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "RevenueLens",
   description: "Understand your sales. Predict your revenue.",
 };
 
-export default function MarketingLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // El root layout ya se encarga de html/body, fuente y colores.
-  return <div className="min-h-screen">{children}</div>;
+  return (
+    <html lang="en">
+      <body className={inter.className}>{children}</body>
+    </html>
+  );
 }
