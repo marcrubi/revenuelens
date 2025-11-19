@@ -25,6 +25,36 @@ type ParsedRow = {
   customer_id: string | null;
 };
 
+// Parser de una línea de CSV con comillas dobles y comas dentro de campos
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (char === '"') {
+      // Escapado "" -> añade una comilla
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  result.push(current);
+  return result.map((c) => c.trim());
+}
+
+// Parser de CSV completo usando parseCsvLine
 function parseCsv(text: string): ParsedRow[] {
   const lines = text
     .split(/\r?\n/)
@@ -33,7 +63,7 @@ function parseCsv(text: string): ParsedRow[] {
 
   if (lines.length < 2) return [];
 
-  const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  const header = parseCsvLine(lines[0]).map((h) => h.toLowerCase());
 
   const idxDate = header.indexOf("date");
   const idxAmount = header.indexOf("amount");
@@ -54,13 +84,15 @@ function parseCsv(text: string): ParsedRow[] {
     const raw = lines[i];
     if (!raw) continue;
 
-    const cols = raw.split(",").map((c) => c.trim());
+    const cols = parseCsvLine(raw);
     const date = cols[idxDate] ?? "";
     const amountRaw = cols[idxAmount] ?? "";
 
     if (!date || !amountRaw) continue;
 
-    const amount = Number(amountRaw);
+    // Aceptar formatos tipo "1,200.50"
+    const normalizedAmount = amountRaw.replace(/,/g, "");
+    const amount = Number(normalizedAmount);
     if (!Number.isFinite(amount)) continue;
 
     const product = idxProduct !== -1 ? cols[idxProduct] || null : null;
@@ -111,6 +143,8 @@ export default function NewDatasetPage() {
 
     setSubmitting(true);
 
+    let datasetId: string | null = null;
+
     try {
       // 1) Usuario actual
       const { data: authData, error: authError } =
@@ -123,7 +157,7 @@ export default function NewDatasetPage() {
 
       const userId = authData.user.id;
 
-      // 2) Perfil -> business_id
+      // 2) Profile -> business_id
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("business_id")
@@ -144,7 +178,18 @@ export default function NewDatasetPage() {
         return;
       }
 
-      // 3) Crear dataset
+      // 3) Leer y parsear CSV ANTES de crear el dataset
+      const text = await readFileAsText(file);
+      const parsed = parseCsv(text);
+
+      if (parsed.length === 0) {
+        setError(
+          "We couldn't find valid rows in the CSV. Make sure it has at least 'date' and 'amount' columns.",
+        );
+        return;
+      }
+
+      // 4) Crear dataset
       const { data: dataset, error: insertError } = await supabase
         .from("datasets")
         .insert({
@@ -159,18 +204,7 @@ export default function NewDatasetPage() {
         return;
       }
 
-      const datasetId = dataset.id;
-
-      // 4) Leer y parsear CSV
-      const text = await readFileAsText(file);
-      const parsed = parseCsv(text);
-
-      if (parsed.length === 0) {
-        setError(
-          "We created the dataset but could not find valid rows in the CSV. Make sure it has at least 'date' and 'amount' columns.",
-        );
-        return;
-      }
+      datasetId = dataset.id;
 
       // 5) Insertar ventas
       const salesToInsert = parsed.map((row) => ({
@@ -187,8 +221,11 @@ export default function NewDatasetPage() {
         .insert(salesToInsert);
 
       if (salesError) {
+        // Intentar limpiar el dataset creado si la import falla
+        await supabase.from("datasets").delete().eq("id", datasetId);
+
         setError(
-          "The dataset was created, but we couldn't import the sales data.",
+          "We created the dataset but failed to import the sales data. The dataset was removed. Please fix the CSV and try again.",
         );
         return;
       }

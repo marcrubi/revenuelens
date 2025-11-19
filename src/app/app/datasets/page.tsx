@@ -2,72 +2,126 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 
-type Dataset = {
+type DatasetRow = {
   id: string;
   name: string;
-  created_at: string | null;
+  created_at: string;
+  rowsCount: number | null;
 };
 
 export default function DatasetsPage() {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [rowCounts, setRowCounts] = useState<Record<string, number>>({});
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
+  const [datasets, setDatasets] = useState<DatasetRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadDatasets() {
-      try {
-        setError(null);
+      setLoading(true);
+      setError(null);
 
-        const { data, error } = await supabase
-          .from("datasets")
-          .select("id, name, created_at")
-          .order("created_at", { ascending: false });
+      try {
+        // 1) Usuario
+        const { data: authData, error: authError } =
+          await supabase.auth.getUser();
+        if (!isMounted) return;
+
+        if (authError || !authData?.user) {
+          router.replace("/auth/sign-in");
+          return;
+        }
+
+        const userId = authData.user.id;
+
+        // 2) Profile -> business_id
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("business_id")
+          .eq("id", userId)
+          .maybeSingle();
 
         if (!isMounted) return;
 
-        if (error) {
-          setError(error.message);
-          setDatasets([]);
+        if (profileError) {
+          setError("We couldn't load your workspace profile.");
+          setLoading(false);
+          setWorkspaceLoading(false);
+          return;
+        }
+
+        if (!profile?.business_id) {
+          // AppShell debería crear el workspace si falta.
+          // Aquí mostramos un estado suave, no un error duro.
+          setWorkspaceLoading(true);
           setLoading(false);
           return;
         }
 
-        const datasetsData = data ?? [];
-        setDatasets(datasetsData);
+        setWorkspaceLoading(false);
 
-        // Contar filas en sales por dataset
-        const counts: Record<string, number> = {};
-
-        await Promise.all(
-          datasetsData.map(async (dataset) => {
-            const { count, error: countError } = await supabase
-              .from("sales")
-              .select("id", { count: "exact", head: true })
-              .eq("dataset_id", dataset.id);
-
-            if (!countError && typeof count === "number") {
-              counts[dataset.id] = count;
-            }
-          }),
-        );
+        // 3) Datasets del negocio (multi-tenant OK)
+        const { data: ds, error: dsError } = await supabase
+          .from("datasets")
+          .select("id, name, created_at")
+          .eq("business_id", profile.business_id)
+          .order("created_at", { ascending: false });
 
         if (!isMounted) return;
 
-        setRowCounts(counts);
+        if (dsError) {
+          setError("We couldn't load your datasets.");
+          setLoading(false);
+          return;
+        }
+
+        const base = (ds ?? []) as {
+          id: string;
+          name: string;
+          created_at: string;
+        }[];
+
+        // 4) N+1 para contar filas (suficiente para v1.0)
+        const withCounts: DatasetRow[] = [];
+        for (const d of base) {
+          const { count, error: countError } = await supabase
+            .from("sales")
+            .select("id", { count: "exact", head: true })
+            .eq("dataset_id", d.id);
+
+          if (!isMounted) return;
+
+          if (countError) {
+            withCounts.push({
+              id: d.id,
+              name: d.name,
+              created_at: d.created_at,
+              rowsCount: null,
+            });
+          } else {
+            withCounts.push({
+              id: d.id,
+              name: d.name,
+              created_at: d.created_at,
+              rowsCount: count ?? 0,
+            });
+          }
+        }
+
+        setDatasets(withCounts);
         setLoading(false);
       } catch {
         if (!isMounted) return;
         setError("Unexpected error while loading datasets.");
-        setDatasets([]);
         setLoading(false);
+        setWorkspaceLoading(false);
       }
     }
 
@@ -76,13 +130,87 @@ export default function DatasetsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [router]);
 
-  const formatDate = (value: string | null) => {
-    if (!value) return "—";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return value;
-    return d.toISOString().slice(0, 10);
+  const renderContent = () => {
+    if (workspaceLoading && !error && !datasets.length) {
+      return (
+        <Card className="p-4">
+          <p className="text-sm text-slate-500">
+            Setting up your workspace… If this takes more than a few seconds,
+            try refreshing the page.
+          </p>
+        </Card>
+      );
+    }
+
+    if (loading) {
+      return (
+        <Card className="p-4">
+          <p className="text-sm text-slate-500">Loading your datasets…</p>
+        </Card>
+      );
+    }
+
+    if (error) {
+      return (
+        <Card className="p-4">
+          <p className="text-sm text-red-600">{error}</p>
+        </Card>
+      );
+    }
+
+    if (!datasets.length) {
+      return (
+        <Card className="p-4">
+          <p className="text-sm text-slate-500">
+            You don&apos;t have any datasets yet. Upload your first CSV to get
+            started.
+          </p>
+        </Card>
+      );
+    }
+
+    return (
+      <Card className="p-0 overflow-hidden">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-slate-50 text-xs text-slate-500">
+            <tr>
+              <th className="border-b border-slate-200 px-4 py-2 text-left font-medium">
+                Name
+              </th>
+              <th className="border-b border-slate-200 px-4 py-2 text-left font-medium">
+                Created at
+              </th>
+              <th className="border-b border-slate-200 px-4 py-2 text-right font-medium">
+                Rows
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {datasets.map((d) => {
+              const created = d.created_at
+                ? new Date(d.created_at).toLocaleDateString()
+                : "—";
+              return (
+                <tr
+                  key={d.id}
+                  className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/70"
+                >
+                  <td className="px-4 py-2">
+                    <span className="font-medium text-slate-800">{d.name}</span>
+                  </td>
+                  <td className="px-4 py-2 text-slate-600">{created}</td>
+                  <td className="px-4 py-2 text-right text-slate-700">
+                    {d.rowsCount === null ? "—" : d.rowsCount.toLocaleString()}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
+    );
   };
 
   return (
@@ -92,81 +220,20 @@ export default function DatasetsPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Datasets</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Manage the sales datasets that power your dashboards and forecasts.
+            Each dataset is a separate sales export powering dashboards and
+            forecasts.
           </p>
         </div>
 
-        <Button asChild>
-          <Link href="/app/datasets/new">New dataset</Link>
+        <Button
+          onClick={() => router.push("/app/datasets/new")}
+          className="rounded-full"
+        >
+          New dataset
         </Button>
       </div>
 
-      {/* Table / states */}
-      <Card className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-semibold">Your datasets</p>
-          {!loading && !error && (
-            <p className="text-xs text-slate-400">
-              {datasets.length} dataset
-              {datasets.length !== 1 ? "s" : ""} total
-            </p>
-          )}
-        </div>
-
-        {loading ? (
-          <p className="py-6 text-center text-xs text-slate-400">
-            Loading datasets…
-          </p>
-        ) : error ? (
-          <p className="py-6 text-center text-xs text-red-600">
-            We couldn&apos;t load your datasets: {error}
-          </p>
-        ) : datasets.length === 0 ? (
-          <p className="py-6 text-center text-xs text-slate-400">
-            You don&apos;t have any datasets yet. Create one to start exploring
-            your sales.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs text-slate-500">
-                  <th className="py-2 text-left font-medium">Name</th>
-                  <th className="py-2 text-left font-medium">Created at</th>
-                  <th className="py-2 text-right font-medium">Rows</th>
-                </tr>
-              </thead>
-              <tbody className="text-xs text-slate-700">
-                {datasets.map((dataset) => {
-                  const rows =
-                    rowCounts[dataset.id] !== undefined
-                      ? rowCounts[dataset.id]
-                      : 0;
-
-                  return (
-                    <tr
-                      key={dataset.id}
-                      className="border-b border-slate-100 last:border-b-0"
-                    >
-                      <td className="py-2 align-middle">
-                        <span className="font-medium">{dataset.name}</span>
-                      </td>
-                      <td className="py-2 align-middle">
-                        <span className="text-slate-500">
-                          {formatDate(dataset.created_at)}
-                        </span>
-                      </td>
-                      <td className="py-2 text-right align-middle">
-                        {rows.toLocaleString("en-US")}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+      {renderContent()}
     </div>
   );
 }

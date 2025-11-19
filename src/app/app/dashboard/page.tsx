@@ -1,4 +1,3 @@
-// src/app/app/dashboard/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -14,6 +13,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+
+type Dataset = {
+  id: string;
+  name: string;
+};
 
 type Sale = {
   date: string;
@@ -45,34 +49,89 @@ type CategoryRow = {
   revenue: number;
 };
 
+type RangeOption = "30" | "90" | "all";
+
+function filterSalesByRange(sales: Sale[], range: RangeOption): Sale[] {
+  if (sales.length === 0) return [];
+
+  if (range === "all") {
+    return [...sales];
+  }
+
+  const sortedDates = sales.map((s) => s.date).sort();
+  const maxDate = sortedDates[sortedDates.length - 1];
+
+  const max = new Date(maxDate);
+  const minRange = new Date(max);
+  const days = range === "30" ? 29 : 89;
+  minRange.setDate(max.getDate() - days);
+
+  const minStr = minRange.toISOString().slice(0, 10);
+  const filtered = sales.filter((s) => s.date >= minStr);
+
+  if (filtered.length === 0) {
+    return [...sales];
+  }
+
+  return filtered;
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  if (rows.length === 0) return;
+
+  const escapeCell = (value: string) => {
+    const v = value.replace(/"/g, '""');
+    return /[",\n]/.test(v) ? `"${v}"` : v;
+  };
+
+  const csv = rows
+    .map((row) => row.map((cell) => escapeCell(cell)).join(","))
+    .join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export default function DashboardPage() {
   const router = useRouter();
+
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
+  const [range, setRange] = useState<RangeOption>("30");
+
   const [loading, setLoading] = useState(true);
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [topProducts, setTopProducts] = useState<ProductRow[]>([]);
   const [categories, setCategories] = useState<CategoryRow[]>([]);
-  const [datasetName, setDatasetName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // 1) Cargar datasets del workspace
   useEffect(() => {
     let isMounted = true;
 
-    async function loadDashboard() {
+    async function loadDatasets() {
       try {
-        // 1) Usuario
+        setError(null);
+        setLoading(true);
+
         const { data: authData, error: authError } =
           await supabase.auth.getUser();
+        if (!isMounted) return;
 
         if (authError || !authData?.user) {
-          if (!isMounted) return;
           router.replace("/auth/sign-in");
           return;
         }
-
         const userId = authData.user.id;
 
-        // 2) Profile -> business_id
         const { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("business_id")
@@ -83,52 +142,74 @@ export default function DashboardPage() {
 
         if (profileError || !profile?.business_id) {
           setError(
-            "We couldn't find a workspace linked to your account. Try creating a dataset first.",
+            "We couldn't find a workspace linked to your account. Create a dataset first.",
           );
+          setDatasets([]);
           setLoading(false);
           return;
         }
 
         const businessId = profile.business_id;
 
-        // 3) Datasets del negocio
-        const { data: datasets, error: datasetsError } = await supabase
+        const { data: ds, error: dsError } = await supabase
           .from("datasets")
-          .select("id, name, created_at")
+          .select("id, name")
           .eq("business_id", businessId)
           .order("created_at", { ascending: false });
 
         if (!isMounted) return;
 
-        if (datasetsError) {
+        if (dsError) {
           setError("We couldn't load your datasets.");
+          setDatasets([]);
           setLoading(false);
           return;
         }
 
-        if (!datasets || datasets.length === 0) {
-          setError(
-            "You don't have any datasets yet. Create one to see your dashboard.",
-          );
+        const list = (ds ?? []) as Dataset[];
+        setDatasets(list);
+
+        if (list.length === 0) {
+          setError("You don't have any datasets yet. Upload one first.");
           setLoading(false);
           return;
         }
 
-        const activeDataset = datasets[0];
-        setDatasetName(activeDataset.name);
+        // Dataset por defecto: el más reciente
+        setSelectedDatasetId((current) => current || list[0].id);
+      } catch {
+        if (!isMounted) return;
+        setError("Unexpected error while loading datasets.");
+        setDatasets([]);
+        setLoading(false);
+      }
+    }
 
-        // 4) Ventas últimos 30 días de ese dataset
-        const today = new Date();
-        const from = new Date();
-        from.setDate(today.getDate() - 29); // 30 días incluyendo hoy
+    loadDatasets();
 
-        const fromStr = from.toISOString().slice(0, 10);
+    return () => {
+      isMounted = false;
+    };
+  }, [router]);
+
+  // 2) Cargar ventas + calcular KPIs / chart / tablas cuando cambian dataset o rango
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadDashboardForDataset() {
+      if (!selectedDatasetId) {
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
 
         const { data: sales, error: salesError } = await supabase
           .from("sales")
           .select("date, amount, product, category")
-          .eq("dataset_id", activeDataset.id)
-          .gte("date", fromStr);
+          .eq("dataset_id", selectedDatasetId)
+          .order("date", { ascending: true });
 
         if (!isMounted) return;
 
@@ -138,32 +219,34 @@ export default function DashboardPage() {
           return;
         }
 
-        const castedSales: Sale[] = (sales ?? []).map((s) => ({
+        if (!sales || sales.length === 0) {
+          setError(
+            "This dataset has no sales yet. Upload data to see the dashboard.",
+          );
+          setKpis(null);
+          setChartData([]);
+          setTopProducts([]);
+          setCategories([]);
+          setLoading(false);
+          return;
+        }
+
+        const castedSales: Sale[] = sales.map((s) => ({
           date: s.date,
           amount: Number(s.amount),
           product: s.product ?? null,
           category: s.category ?? null,
         }));
 
-        if (castedSales.length === 0) {
-          setError(
-            "We didn't find any sales for the last 30 days. Upload data to see the dashboard.",
-          );
-          setLoading(false);
-          return;
-        }
+        const windowSales = filterSalesByRange(castedSales, range);
 
-        // 5) KPIs
-        const totalRevenue = castedSales.reduce(
-          (sum, s) => sum + (Number.isFinite(s.amount) ? s.amount : 0),
-          0,
-        );
-        const orders = castedSales.length;
+        // KPIs
+        const totalRevenue = windowSales.reduce((sum, s) => sum + s.amount, 0);
+        const orders = windowSales.length;
         const avgTicket = orders > 0 ? totalRevenue / orders : 0;
 
-        // Top product por revenue
         const revenueByProduct = new Map<string, number>();
-        for (const s of castedSales) {
+        for (const s of windowSales) {
           const key = s.product?.trim() || "Unspecified";
           revenueByProduct.set(
             key,
@@ -173,7 +256,6 @@ export default function DashboardPage() {
 
         let topProduct: string | null = null;
         let topProductRevenue = 0;
-
         for (const [product, revenue] of revenueByProduct.entries()) {
           if (revenue > topProductRevenue) {
             topProductRevenue = revenue;
@@ -192,35 +274,30 @@ export default function DashboardPage() {
           topProductShare,
         });
 
-        // 6) Gráfico: revenue diario
+        // Chart: revenue diario
         const revenueByDate = new Map<string, number>();
-        for (const s of castedSales) {
+        for (const s of windowSales) {
           const d = s.date.slice(0, 10);
           revenueByDate.set(d, (revenueByDate.get(d) ?? 0) + s.amount);
         }
 
-        const dates = Array.from(revenueByDate.keys()).sort((a, b) =>
-          a.localeCompare(b),
-        );
-
-        const chartPoints: ChartPoint[] = dates.map((d) => ({
-          date: d,
-          revenue: revenueByDate.get(d) ?? 0,
-        }));
+        const chartPoints: ChartPoint[] = Array.from(revenueByDate.entries())
+          .map(([date, revenue]) => ({ date, revenue }))
+          .sort((a, b) => a.date.localeCompare(b.date));
 
         setChartData(chartPoints);
 
-        // 7) Tablas: top productos y categorías
+        // Top products
         const productRows: ProductRow[] = Array.from(revenueByProduct.entries())
-          .map(([product, revenue]) => ({
-            product,
-            revenue,
-          }))
+          .map(([product, revenue]) => ({ product, revenue }))
           .sort((a, b) => b.revenue - a.revenue)
           .slice(0, 5);
 
+        setTopProducts(productRows);
+
+        // Categories
         const revenueByCategory = new Map<string, number>();
-        for (const s of castedSales) {
+        for (const s of windowSales) {
           const key = s.category?.trim() || "Unspecified";
           revenueByCategory.set(
             key,
@@ -231,32 +308,65 @@ export default function DashboardPage() {
         const categoryRows: CategoryRow[] = Array.from(
           revenueByCategory.entries(),
         )
-          .map(([category, revenue]) => ({
-            category,
-            revenue,
-          }))
+          .map(([category, revenue]) => ({ category, revenue }))
           .sort((a, b) => b.revenue - a.revenue)
           .slice(0, 5);
 
-        setTopProducts(productRows);
         setCategories(categoryRows);
 
         setLoading(false);
       } catch {
         if (!isMounted) return;
-        setError("Unexpected error while loading the dashboard.");
+        setError("Unexpected error while loading dashboard.");
         setLoading(false);
       }
     }
 
-    loadDashboard();
+    loadDashboardForDataset();
 
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, [selectedDatasetId, range]);
 
-  if (loading) {
+  const selectedDatasetName =
+    datasets.find((d) => d.id === selectedDatasetId)?.name ?? "—";
+
+  const rangeLabel =
+    range === "30"
+      ? "Last 30 days (relative)"
+      : range === "90"
+        ? "Last 90 days (relative)"
+        : "All available data";
+
+  const handleExportDailyRevenue = () => {
+    if (!chartData.length) return;
+    const rows: string[][] = [["date", "revenue"]];
+    chartData.forEach((p) => {
+      rows.push([p.date, p.revenue.toString()]);
+    });
+    downloadCsv("daily_revenue.csv", rows);
+  };
+
+  const handleExportTopProducts = () => {
+    if (!topProducts.length) return;
+    const rows: string[][] = [["product", "revenue"]];
+    topProducts.forEach((p) => {
+      rows.push([p.product, p.revenue.toString()]);
+    });
+    downloadCsv("top_products.csv", rows);
+  };
+
+  const handleExportCategories = () => {
+    if (!categories.length) return;
+    const rows: string[][] = [["category", "revenue"]];
+    categories.forEach((c) => {
+      rows.push([c.category, c.revenue.toString()]);
+    });
+    downloadCsv("sales_by_category.csv", rows);
+  };
+
+  if (loading && !kpis && !error) {
     return (
       <div className="flex min-h-[200px] items-center justify-center">
         <p className="text-sm text-slate-500">Loading your sales overview…</p>
@@ -267,14 +377,33 @@ export default function DashboardPage() {
   if (error || !kpis) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">
-            Sales overview
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            See how your revenue is trending across your datasets.
-          </p>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">
+              Sales overview
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              See how your revenue is trending across your datasets.
+            </p>
+          </div>
+
+          {/* Controles deshabilitados si hay error */}
+          <div className="flex flex-col gap-2 text-xs text-slate-500 md:flex-row md:items-center">
+            <select
+              className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"
+              disabled
+            >
+              <option>Dataset</option>
+            </select>
+            <select
+              className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"
+              disabled
+            >
+              <option>Range</option>
+            </select>
+          </div>
         </div>
+
         <Card className="p-4">
           <p className="text-sm text-red-600">{error}</p>
         </Card>
@@ -286,15 +415,49 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Sales overview</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Last 30 days for{" "}
-          <span className="font-medium">
-            {datasetName ?? "your latest dataset"}
-          </span>
-          .
-        </p>
+      {/* HEADER + CONTROLES */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">
+            Sales overview
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {rangeLabel} for{" "}
+            <span className="font-medium">{selectedDatasetName}</span>.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2 text-xs text-slate-600 md:flex-row md:items-center">
+          <div className="flex flex-col gap-1 md:flex-row md:items-center">
+            <span className="md:mr-1">Dataset</span>
+            <select
+              className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"
+              value={selectedDatasetId}
+              onChange={(e) => setSelectedDatasetId(e.target.value)}
+              disabled={datasets.length === 0 || loading}
+            >
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1 md:flex-row md:items-center">
+            <span className="md:mr-1">Range</span>
+            <select
+              className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs"
+              value={range}
+              onChange={(e) => setRange(e.target.value as RangeOption)}
+              disabled={loading}
+            >
+              <option value="30">Last 30 days (relative)</option>
+              <option value="90">Last 90 days (relative)</option>
+              <option value="all">All data</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -303,9 +466,12 @@ export default function DashboardPage() {
           <p className="text-xs font-medium text-slate-500">Total revenue</p>
           <p className="mt-2 text-xl font-semibold">
             $
-            {totalRevenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+            {totalRevenue.toLocaleString("en-US", {
+              maximumFractionDigits: 0,
+            })}
           </p>
         </Card>
+
         <Card className="p-4">
           <p className="text-xs font-medium text-slate-500">Orders</p>
           <p className="mt-2 text-xl font-semibold">
@@ -318,32 +484,49 @@ export default function DashboardPage() {
             })}
           </p>
         </Card>
+
         <Card className="p-4">
           <p className="text-xs font-medium text-slate-500">Top product</p>
           <p className="mt-2 text-sm font-semibold">
             {topProduct ?? "No product data"}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            {topProduct && topProductShare !== null
-              ? `${(topProductShare * 100).toFixed(1)}% of total revenue`
-              : "Based on product column"}
+            {topProductShare !== null
+              ? `${(topProductShare * 100).toFixed(1)}% of revenue`
+              : "—"}
           </p>
         </Card>
+
         <Card className="p-4">
-          <p className="text-xs font-medium text-slate-500">
-            Revenue (last 30 days)
+          <p className="text-xs font-medium text-slate-500">Dataset range</p>
+          <p className="mt-2 text-sm font-semibold">
+            {range === "all" ? "All data" : rangeLabel}
           </p>
-          <p className="mt-2 text-xl font-semibold">
-            $
-            {totalRevenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+          <p className="mt-1 text-xs text-slate-500">
+            Relative to the most recent date in this dataset.
           </p>
-          <p className="mt-1 text-xs text-slate-500">Based on uploaded sales</p>
         </Card>
       </div>
 
-      {/* Chart */}
-      <Card className="h-64 p-4">
-        <p className="mb-2 text-xs font-medium text-slate-500">Daily revenue</p>
+      {/* CHART + EXPORT */}
+      <Card className="h-72 p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium text-slate-500">Daily revenue</p>
+            <p className="text-[11px] text-slate-400">
+              Historical revenue aggregated by day.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleExportDailyRevenue}
+            className="text-[11px] font-medium text-slate-500 hover:text-slate-900"
+            disabled={!chartData.length}
+          >
+            Export CSV
+          </button>
+        </div>
+
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
             data={chartData}
@@ -383,16 +566,30 @@ export default function DashboardPage() {
         </ResponsiveContainer>
       </Card>
 
-      {/* Tables */}
+      {/* TABLES + EXPORT */}
       <div className="grid gap-4 md:grid-cols-2">
+        {/* Top products */}
         <Card className="p-4">
-          <p className="text-sm font-semibold">Top products</p>
-          <p className="mb-3 mt-1 text-xs text-slate-500">
-            Based on revenue in the last 30 days.
-          </p>
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold">Top products</p>
+              <p className="text-xs text-slate-500">
+                Based on revenue in the selected range.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleExportTopProducts}
+              className="text-[11px] font-medium text-slate-500 hover:text-slate-900"
+              disabled={!topProducts.length}
+            >
+              Export CSV
+            </button>
+          </div>
+
           {topProducts.length === 0 ? (
             <p className="py-4 text-xs text-slate-400">
-              No product information available.
+              No product information.
             </p>
           ) : (
             <table className="w-full text-xs">
@@ -426,15 +623,27 @@ export default function DashboardPage() {
           )}
         </Card>
 
+        {/* Categories */}
         <Card className="p-4">
-          <p className="text-sm font-semibold">Sales by category</p>
-          <p className="mb-3 mt-1 text-xs text-slate-500">
-            Based on the category column in your CSV.
-          </p>
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold">Sales by category</p>
+              <p className="text-xs text-slate-500">
+                Based on the category column in your CSV.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleExportCategories}
+              className="text-[11px] font-medium text-slate-500 hover:text-slate-900"
+              disabled={!categories.length}
+            >
+              Export CSV
+            </button>
+          </div>
+
           {categories.length === 0 ? (
-            <p className="py-4 text-xs text-slate-400">
-              No category information available.
-            </p>
+            <p className="py-4 text-xs text-slate-400">No category data.</p>
           ) : (
             <table className="w-full text-xs">
               <thead>
