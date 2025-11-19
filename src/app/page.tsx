@@ -1,53 +1,7 @@
 // src/app/page.tsx
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
 
 export default function HomePage() {
-  const router = useRouter();
-  const [checkingSession, setCheckingSession] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    async function checkSession() {
-      try {
-        const { data } = await supabase.auth.getUser();
-        if (!active) return;
-
-        if (data?.user) {
-          // Ya autenticado → manda a la app interna
-          router.replace("/app/dashboard");
-        } else {
-          // No autenticado → muestra la landing
-          setCheckingSession(false);
-        }
-      } catch {
-        // En caso de error, mostramos la landing igualmente
-        if (!active) return;
-        setCheckingSession(false);
-      }
-    }
-
-    checkSession();
-
-    return () => {
-      active = false;
-    };
-  }, [router]);
-
-  if (checkingSession) {
-    // Evitamos parpadeo raro: pantallita neutra mientras chequeamos
-    return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">
-        Loading your workspace…
-      </div>
-    );
-  }
-
   return (
     <main className="min-h-screen">
       {/* TOPBAR */}

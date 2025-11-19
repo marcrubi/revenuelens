@@ -1,55 +1,66 @@
-// src/app/(auth)/auth/update-password/page.tsx
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient"; // Asumo que esto exporta un createBrowserClient
 
 export default function UpdatePasswordPage() {
   const router = useRouter();
+
+  // Estados
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [checking, setChecking] = useState(true);
-  const [hasSession, setHasSession] = useState(false);
+
+  // Estados de carga y flujo
+  const [checkingToken, setCheckingToken] = useState(true);
+  const [hasValidSession, setHasValidSession] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [updateSuccess, setUpdateSuccess] = useState(false);
+
+  // Mensajes
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
 
-  // Comprobar si hay sesión válida (token de reset)
+  // 1. Verificar si el usuario llega con un token válido (hash en URL)
   useEffect(() => {
-    let isMounted = true;
+    const checkSession = async () => {
+      // Supabase detecta el token en la URL automáticamente y establece la sesión
+      const { data, error } = await supabase.auth.getUser();
 
-    async function check() {
-      const { data } = await supabase.auth.getUser();
-      if (!isMounted) return;
-      if (data?.user) {
-        setHasSession(true);
+      if (error || !data?.user) {
+        setHasValidSession(false);
       } else {
-        setHasSession(false);
+        setHasValidSession(true);
       }
-      setChecking(false);
-    }
-
-    check();
-
-    return () => {
-      isMounted = false;
+      setCheckingToken(false);
     };
+
+    checkSession();
   }, []);
+
+  // Redirección automática tras éxito (opcional, mejora UX)
+  useEffect(() => {
+    if (updateSuccess) {
+      const timer = setTimeout(() => {
+        router.push("/auth/sign-in");
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [updateSuccess, router]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setInfo(null);
 
+    // Validaciones Client-side
     if (!password || !passwordConfirm) {
       setError("Please fill in both password fields.");
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long.");
+    if (password.length < 8) {
+      // Mínimo 8 caracteres
+      setError("Password must be at least 8 characters long.");
       return;
     }
 
@@ -61,81 +72,112 @@ export default function UpdatePasswordPage() {
     setIsUpdating(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({ password });
+      const { error: supabaseError } = await supabase.auth.updateUser({
+        password: password,
+      });
 
-      setIsUpdating(false);
-
-      if (error) {
-        setError("We couldn't update your password. Please try again.");
+      if (supabaseError) {
+        // AQUÍ: Mostramos el error real. Supabase te dirá si es igual a la anterior,
+        // si es muy débil (según config), etc.
+        setError(supabaseError.message);
+        setIsUpdating(false);
         return;
       }
 
-      setInfo("Your password has been updated. You can now log in.");
-    } catch {
+      setUpdateSuccess(true);
       setIsUpdating(false);
-      setError("Unexpected error while updating your password.");
+      // Limpiamos campos por seguridad visual
+      setPassword("");
+      setPasswordConfirm("");
+    } catch (err) {
+      setIsUpdating(false);
+      setError("Unexpected error. Please try again.");
     }
   }
 
-  if (checking) {
+  // Render 1: Comprobando token
+  if (checkingToken) {
     return (
-      <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-3 duration-300">
-        <p className="text-center text-sm text-slate-500">
-          Checking your reset link…
-        </p>
+      <div className="space-y-6 text-center animate-in fade-in duration-300">
+        <p className="text-sm text-slate-500">Verifying security token...</p>
       </div>
     );
   }
 
-  if (!hasSession) {
+  // Render 2: Token inválido o expirado
+  if (!hasValidSession) {
     return (
-      <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-3 duration-300">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex items-center gap-2">
-            <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
-            <span className="text-sm font-semibold tracking-tight">
-              RevenueLens
-            </span>
+      <div className="space-y-6 animate-in fade-in duration-300 text-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center text-red-600">
+            ⚠️
           </div>
           <div>
-            <h1 className="text-lg font-semibold">Invalid or expired link</h1>
-            <p className="mt-1 text-sm text-slate-600">
-              This password reset link is no longer valid. Request a new one to
-              reset your password.
+            <h1 className="text-lg font-semibold text-slate-900">
+              Link Expired
+            </h1>
+            <p className="mt-1 text-sm text-slate-600 max-w-xs mx-auto">
+              This password reset link is invalid or has expired.
             </p>
           </div>
         </div>
-
-        <div className="flex justify-center text-xs text-slate-600">
-          <Link
-            href="/auth/reset-password"
-            className="font-medium text-blue-600 hover:underline"
-          >
-            Request a new reset link
-          </Link>
-        </div>
+        <Link
+          href="/auth/reset-password" // Asumo que esta es la página para pedir el correo
+          className="inline-block text-sm font-medium text-blue-600 hover:underline"
+        >
+          Request a new link &rarr;
+        </Link>
       </div>
     );
   }
 
+  // Render 3: Éxito
+  if (updateSuccess) {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300 text-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+            ✓
+          </div>
+          <h1 className="text-lg font-semibold text-slate-900">
+            Password Updated
+          </h1>
+          <p className="text-sm text-slate-600">
+            Your password has been changed successfully. <br />
+            Redirecting to login...
+          </p>
+        </div>
+        <Link
+          href="/auth/sign-in"
+          className="inline-block w-full rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+        >
+          Go to Login now
+        </Link>
+      </div>
+    );
+  }
+
+  // Render 4: Formulario normal
   return (
-    <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-3 duration-300">
+    <div className="space-y-6 animate-in fade-in duration-300">
       <div className="flex flex-col items-center gap-3 text-center">
         <div className="flex items-center gap-2">
           <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
-          <span className="text-sm font-semibold tracking-tight">
+          <span className="text-sm font-semibold tracking-tight text-slate-900">
             RevenueLens
           </span>
         </div>
         <div>
-          <h1 className="text-lg font-semibold">Set a new password</h1>
+          <h1 className="text-lg font-semibold text-slate-900">
+            Set new password
+          </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Choose a new password for your RevenueLens account.
+            Must be at least 8 characters long.
           </p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
           <label className="block text-sm font-medium text-slate-700">
             New password
@@ -143,53 +185,58 @@ export default function UpdatePasswordPage() {
           <input
             type="password"
             autoComplete="new-password"
+            required
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
-              setError(null);
-              setInfo(null);
+              if (error) setError(null);
             }}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+            placeholder="••••••••"
           />
         </div>
 
         <div className="space-y-1.5">
           <label className="block text-sm font-medium text-slate-700">
-            Confirm new password
+            Confirm password
           </label>
           <input
             type="password"
             autoComplete="new-password"
+            required
             value={passwordConfirm}
             onChange={(e) => {
               setPasswordConfirm(e.target.value);
-              setError(null);
-              setInfo(null);
+              if (error) setError(null);
             }}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+            placeholder="••••••••"
           />
         </div>
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
-        {info && <p className="text-sm text-emerald-600">{info}</p>}
+        {/* Mensaje de error dinámico */}
+        {error && (
+          <div className="p-3 rounded-md bg-red-50 border border-red-100 text-sm text-red-600">
+            {error}
+          </div>
+        )}
 
         <button
           type="submit"
           disabled={isUpdating}
-          className="flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-slate-50 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-slate-50 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70 transition-colors"
         >
-          {isUpdating ? "Updating password…" : "Update password"}
+          {isUpdating ? "Updating..." : "Update password"}
         </button>
       </form>
 
-      <div className="flex justify-center text-xs text-slate-600">
-        <button
-          type="button"
-          onClick={() => router.push("/auth/sign-in")}
-          className="hover:underline"
+      <div className="flex justify-center text-xs">
+        <Link
+          href="/auth/sign-in"
+          className="text-slate-500 hover:text-slate-900 hover:underline"
         >
-          Back to login
-        </button>
+          Cancel and back to login
+        </Link>
       </div>
     </div>
   );
