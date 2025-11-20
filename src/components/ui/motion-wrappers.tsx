@@ -59,8 +59,6 @@ export const StaggerItem = ({
   );
 };
 
-// 3. Tarjeta Elegante (HoverCard)
-// SIN SALTO (y: -4 eliminado). Solo brillo y sombra.
 export const HoverCard = ({
   children,
   className,
@@ -68,7 +66,7 @@ export const HoverCard = ({
 }: React.ComponentProps<typeof Card>) => {
   return (
     <Card
-      className={`h-full transition-all duration-300 hover:shadow-md hover:border-slate-300 ${className}`}
+      className={`h-full transition-colors duration-200 border border-slate-200 shadow-none hover:border-slate-300 bg-white ${className}`}
       {...props}
     >
       {children}

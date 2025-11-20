@@ -5,37 +5,41 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 import { BarChart3 } from "lucide-react";
-import { HoverCard, StaggerContainer, StaggerItem } from "@/components/ui/motion-wrappers";
-// Imports nuevos y refactorizados
+import { StaggerContainer, StaggerItem } from "@/components/ui/motion-wrappers";
 import { DashboardSkeleton } from "@/components/ui/skeletons";
-import { type DashboardSummary, processSalesData, type RangeOption } from "@/lib/analytics";
+import {
+  type DashboardSummary,
+  processSalesData,
+  type RangeOption,
+} from "@/lib/analytics";
 import { downloadCsv, formatCurrency } from "@/lib/utils";
-import type { Dataset, Sale } from "@/types"; // Recharts
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import type { Dataset, Sale } from "@/types";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { toast } from "sonner";
 
 export default function DashboardPage() {
   const router = useRouter();
-
-  // Estados
   const [loading, setLoading] = useState(true);
   const [isSwitching, setIsSwitching] = useState(false);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>("");
   const [range, setRange] = useState<RangeOption>("30");
-
-  // Datos procesados
   const [dashboardData, setDashboardData] = useState<DashboardSummary | null>(
     null,
   );
 
-  // 1. Carga Inicial
   useEffect(() => {
     let isMounted = true;
-
     async function initDashboard() {
       try {
-        // Carga inicial de datasets
         const { data: ds } = await supabase
           .from("datasets")
           .select("id, name, created_at, business_id")
@@ -48,16 +52,12 @@ export default function DashboardPage() {
         if (list.length > 0) {
           const firstId = list[0].id;
           setSelectedDatasetId(firstId);
-
-          // Cargar datos del primer dataset
           const { data: rawSales } = await supabase
             .from("sales")
             .select("date, amount, product, category")
-            .eq("dataset_id", firstId); // NOTA: Idealmente paginar o filtrar por fecha en servidor si es muy grande
+            .eq("dataset_id", firstId);
 
           if (rawSales && isMounted) {
-            // Procesar en el cliente usando la lib analytics
-            // Cast a Sale[] implícito
             const processed = processSalesData(rawSales as Sale[], "30");
             setDashboardData(processed);
           }
@@ -68,20 +68,15 @@ export default function DashboardPage() {
         if (isMounted) setLoading(false);
       }
     }
-
     initDashboard();
-
     return () => {
       isMounted = false;
     };
   }, [router]);
 
-  // 2. Cambio de Dataset o Rango
   useEffect(() => {
     if (loading || !selectedDatasetId) return;
-
     let isMounted = true;
-
     async function refreshData() {
       setIsSwitching(true);
       try {
@@ -100,15 +95,12 @@ export default function DashboardPage() {
         if (isMounted) setIsSwitching(false);
       }
     }
-
     refreshData();
-
     return () => {
       isMounted = false;
     };
-  }, [selectedDatasetId, range]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedDatasetId, range]);
 
-  // --- Handlers de Exportación ---
   const handleExportDaily = () => {
     if (!dashboardData?.chartData) return;
     const rows = [
@@ -130,52 +122,33 @@ export default function DashboardPage() {
     downloadCsv("top_products.csv", rows);
   };
 
-  const handleExportCategories = () => {
-    if (!dashboardData?.categories) return;
-    const rows = [
-      ["category", "revenue"],
-      ...dashboardData.categories.map((c) => [
-        c.category,
-        c.revenue.toString(),
-      ]),
-    ];
-    downloadCsv("categories.csv", rows);
-  };
-
-  // --- RENDER ---
-
-  if (loading) {
-    return <DashboardSkeleton />;
-  }
+  if (loading) return <DashboardSkeleton />;
 
   if (datasets.length === 0) {
     return (
-      <StaggerContainer className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-12 text-center mt-8">
+      <StaggerContainer className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-12 text-center mt-4">
         <StaggerItem>
-          <div className="flex h-12 w-12 mx-auto items-center justify-center bg-white shadow-sm border border-slate-100 mb-4">
-            <BarChart3 className="h-6 w-6 text-blue-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-slate-900">
-            Your dashboard is empty
-          </h3>
-          <p className="mt-2 text-sm text-slate-500 max-w-sm mx-auto mb-6">
-            Upload your first sales dataset to get started.
+          <BarChart3 className="h-8 w-8 mx-auto text-slate-400 mb-3" />
+          <h3 className="text-sm font-semibold text-slate-900">No datasets</h3>
+          <p className="mt-1 text-xs text-slate-500 mb-4">
+            Upload your first CSV to start.
           </p>
-          <Button onClick={() => router.push("/app/datasets/new")}>
-            Upload Sales Data
+          <Button
+            size="sm"
+            onClick={() => router.push("/app/datasets/new")}
+            className="bg-slate-900 text-white h-8"
+          >
+            Upload Data
           </Button>
         </StaggerItem>
       </StaggerContainer>
     );
   }
 
-  // Si hay datasets pero falló el procesado o no hay ventas
   if (!dashboardData) {
     return (
-      <div className="p-8 text-center">
-        <p className="text-slate-500">
-          No sales data found for this selection.
-        </p>
+      <div className="p-8 text-center text-xs text-slate-500">
+        No data available.
       </div>
     );
   }
@@ -184,198 +157,210 @@ export default function DashboardPage() {
   const datasetName =
     datasets.find((d) => d.id === selectedDatasetId)?.name || "Dataset";
 
+  // --- RENDER TÉCNICO (Opción A) ---
   return (
     <StaggerContainer
-      className={`space-y-6 transition-opacity duration-200 ${
-        isSwitching ? "opacity-50 pointer-events-none" : "opacity-100"
-      }`}
+      className={`space-y-4 ${isSwitching ? "opacity-60 pointer-events-none" : "opacity-100"}`}
     >
-      {/* Header & Controls */}
-      <StaggerItem>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Overview</h1>
-            <p className="text-sm text-slate-500">
-              Performance for{" "}
-              <span className="font-medium text-slate-900">{datasetName}</span>
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <select
-              className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
-              value={selectedDatasetId}
-              onChange={(e) => setSelectedDatasetId(e.target.value)}
-            >
-              {datasets.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-blue-200 cursor-pointer"
-              value={range}
-              onChange={(e) => setRange(e.target.value as RangeOption)}
-            >
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
-              <option value="all">All time</option>
-            </select>
-          </div>
+      {/* HEADER: Inputs pequeños y técnicos */}
+      <StaggerItem className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-slate-200">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight text-slate-900">
+            Overview
+          </h1>
+          <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wide mt-0.5">
+            {datasetName}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            className="h-8 w-32 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-slate-900/5 hover:border-slate-300 transition-colors"
+            value={selectedDatasetId}
+            onChange={(e) => setSelectedDatasetId(e.target.value)}
+          >
+            {datasets.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+          <div className="h-4 w-px bg-slate-200" />
+          <select
+            className="h-8 w-32 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-slate-900/5 hover:border-slate-300 transition-colors"
+            value={range}
+            onChange={(e) => setRange(e.target.value as RangeOption)}
+          >
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="all">All time</option>
+          </select>
         </div>
       </StaggerItem>
 
-      {/* KPIs Grid */}
-      <StaggerContainer className="grid gap-4 md:grid-cols-4">
-        <StaggerItem>
-          <HoverCard className="p-5 shadow-sm border-slate-200">
-            <p className="text-xs font-medium uppercase text-slate-500">
-              Total Revenue
-            </p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">
-              {formatCurrency(kpis.totalRevenue)}
-            </p>
-          </HoverCard>
-        </StaggerItem>
-        <StaggerItem>
-          <HoverCard className="p-5 shadow-sm border-slate-200">
-            <p className="text-xs font-medium uppercase text-slate-500">
-              Orders
-            </p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">
-              {kpis.orders.toLocaleString()}
-            </p>
-          </HoverCard>
-        </StaggerItem>
-        <StaggerItem>
-          <HoverCard className="p-5 shadow-sm border-slate-200">
-            <p className="text-xs font-medium uppercase text-slate-500">
-              Avg. Ticket
-            </p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">
-              {formatCurrency(kpis.avgTicket)}
-            </p>
-          </HoverCard>
-        </StaggerItem>
-        <StaggerItem>
-          <HoverCard className="p-5 shadow-sm border-slate-200">
-            <p className="text-xs font-medium uppercase text-slate-500">
-              Top Product
-            </p>
-            <div className="mt-2">
-              <p
-                className="truncate text-sm font-semibold text-slate-900"
-                title={kpis.topProduct || ""}
-              >
-                {kpis.topProduct || "—"}
+      {/* KPIs GRID: Denso, fuente mono, sin sombras */}
+      <StaggerContainer className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          {
+            label: "Total Revenue",
+            value: formatCurrency(kpis.totalRevenue),
+            sub: null,
+          },
+          { label: "Orders", value: kpis.orders.toLocaleString(), sub: null },
+          {
+            label: "Avg. Ticket",
+            value: formatCurrency(kpis.avgTicket),
+            sub: null,
+          },
+          {
+            label: "Top Product",
+            value: kpis.topProduct || "—",
+            sub: kpis.topProductShare
+              ? `${(kpis.topProductShare * 100).toFixed(1)}%`
+              : null,
+          },
+        ].map((stat, i) => (
+          <StaggerItem key={i}>
+            <div className="bg-white rounded-lg border border-slate-200 p-4 h-full flex flex-col justify-between transition-colors hover:border-slate-300">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                {stat.label}
               </p>
-              <p className="text-xs text-slate-500">
-                {kpis.topProductShare
-                  ? `${(kpis.topProductShare * 100).toFixed(1)}% share`
-                  : "No data"}
-              </p>
+              <div className="flex items-end gap-2 justify-between">
+                <p
+                  className={`text-lg font-semibold tracking-tight text-slate-900 ${i !== 3 ? "font-mono" : "truncate text-sm"}`}
+                >
+                  {stat.value}
+                </p>
+                {stat.sub && (
+                  <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm mb-0.5">
+                    {stat.sub}
+                  </span>
+                )}
+              </div>
             </div>
-          </HoverCard>
-        </StaggerItem>
+          </StaggerItem>
+        ))}
       </StaggerContainer>
 
-      {/* Chart */}
-      <StaggerItem>
-        <HoverCard className="p-6 shadow-sm border-slate-200">
-          <div className="mb-6 flex items-center justify-between">
-            <h3 className="font-semibold text-slate-900">Revenue Trend</h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleExportDaily}
-              disabled={!chartData.length}
-            >
-              Export CSV
-            </Button>
-          </div>
-          <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={chartData}
-                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+      {/* BENTO GRID: Chart (2/3) + Top Products (1/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 min-h-[320px]">
+        {/* CHART SECTION */}
+        <StaggerItem className="lg:col-span-2">
+          <div className="h-full rounded-lg border border-slate-200 bg-white p-4">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Revenue Trend
+              </h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportDaily}
+                className="h-6 text-[10px] px-2 border-slate-200 hover:bg-slate-50"
               >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#f1f5f9"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: "#64748b" }}
-                  tickMargin={10}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#64748b" }}
-                  tickMargin={10}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(val) =>
-                    `$${Number(val).toLocaleString("en-US", { notation: "compact" })}`
-                  }
-                />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: "8px",
-                    border: "none",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                    fontSize: "12px",
-                  }}
-                  formatter={(val: number) => [formatCurrency(val), "Revenue"]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#2563eb"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+                Export CSV
+              </Button>
+            </div>
+            <div className="h-[250px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 5, right: 5, left: -20, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#f1f5f9"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    tick={{
+                      fontSize: 10,
+                      fill: "#94a3b8",
+                      fontFamily: "monospace",
+                    }}
+                    tickMargin={10}
+                    axisLine={false}
+                    tickLine={false}
+                    minTickGap={30}
+                  />
+                  <YAxis
+                    tick={{
+                      fontSize: 10,
+                      fill: "#94a3b8",
+                      fontFamily: "monospace",
+                    }}
+                    tickMargin={10}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(val) =>
+                      `$${Number(val).toLocaleString("en-US", { notation: "compact" })}`
+                    }
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: "4px",
+                      border: "1px solid #e2e8f0",
+                      boxShadow: "none",
+                      fontSize: "11px",
+                      padding: "8px",
+                    }}
+                    formatter={(val: number) => [
+                      formatCurrency(val),
+                      "Revenue",
+                    ]}
+                    labelStyle={{
+                      fontFamily: "monospace",
+                      color: "#64748b",
+                      marginBottom: "4px",
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#0f172a"
+                    strokeWidth={1.5}
+                    dot={false}
+                    activeDot={{ r: 4, fill: "#0f172a" }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </HoverCard>
-      </StaggerItem>
+        </StaggerItem>
 
-      {/* Bottom Tables */}
-      <StaggerContainer className="grid gap-6 md:grid-cols-2">
-        {/* Table: Top Products */}
-        <StaggerItem>
-          <HoverCard className="shadow-sm border-slate-200 overflow-hidden p-0 h-full flex flex-col">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/50">
-              <h3 className="font-semibold text-slate-900 text-sm">
+        {/* TABLE: TOP PRODUCTS */}
+        <StaggerItem className="lg:col-span-1">
+          <div className="flex h-full flex-col rounded-lg border border-slate-200 bg-white overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-slate-50/30">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Top Products
               </h3>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-auto py-1 text-xs"
+                className="h-5 px-2 text-[10px] text-slate-400 hover:text-slate-900"
                 onClick={handleExportProducts}
               >
                 Export
               </Button>
             </div>
-            <div className="flex-1 overflow-auto max-h-[300px]">
-              <table className="w-full text-sm">
+            <div className="flex-1 overflow-auto">
+              <table className="w-full text-xs">
                 <tbody className="divide-y divide-slate-50">
-                  {topProducts.map((p, i) => (
+                  {topProducts.slice(0, 7).map((p, i) => (
                     <tr
                       key={i}
-                      className="hover:bg-slate-50/50 transition-colors"
+                      className="hover:bg-slate-50 transition-colors group"
                     >
                       <td
-                        className="px-6 py-3 text-slate-700 truncate max-w-[200px]"
+                        className="px-4 py-2 text-slate-600 truncate max-w-[140px]"
                         title={p.product}
                       >
+                        <span className="mr-2 text-[9px] text-slate-300 font-mono group-hover:text-slate-500">
+                          {(i + 1).toString().padStart(2, "0")}
+                        </span>
                         {p.product}
                       </td>
-                      <td className="px-6 py-3 text-right font-medium text-slate-900">
+                      <td className="px-4 py-2 text-right font-mono font-medium text-slate-900">
                         {formatCurrency(p.revenue)}
                       </td>
                     </tr>
@@ -384,69 +369,67 @@ export default function DashboardPage() {
                     <tr>
                       <td
                         colSpan={2}
-                        className="px-6 py-8 text-center text-xs text-slate-400"
+                        className="py-12 text-center text-xs text-slate-400"
                       >
-                        No products found
+                        No data
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
-          </HoverCard>
+          </div>
         </StaggerItem>
+      </div>
 
-        {/* Table: Categories */}
-        <StaggerItem>
-          <HoverCard className="shadow-sm border-slate-200 overflow-hidden p-0 h-full flex flex-col">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/50">
-              <h3 className="font-semibold text-slate-900 text-sm">
-                Categories
-              </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-auto py-1 text-xs"
-                onClick={handleExportCategories}
-              >
-                Export
-              </Button>
-            </div>
-            <div className="flex-1 overflow-auto max-h-[300px]">
-              <table className="w-full text-sm">
-                <tbody className="divide-y divide-slate-50">
-                  {categories.map((c, i) => (
-                    <tr
-                      key={i}
-                      className="hover:bg-slate-50/50 transition-colors"
-                    >
-                      <td
-                        className="px-6 py-3 text-slate-700 truncate max-w-[200px]"
-                        title={c.category}
-                      >
-                        {c.category}
-                      </td>
-                      <td className="px-6 py-3 text-right font-medium text-slate-900">
-                        {formatCurrency(c.revenue)}
-                      </td>
-                    </tr>
-                  ))}
-                  {categories.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={2}
-                        className="px-6 py-8 text-center text-xs text-slate-400"
-                      >
-                        No categories found
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </HoverCard>
-        </StaggerItem>
-      </StaggerContainer>
+      {/* CATEGORIES BAR (Dense) */}
+      <StaggerItem>
+        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Category Breakdown
+            </h3>
+          </div>
+          <div className="p-0 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50/50 text-slate-400 font-medium border-b border-slate-100">
+                <tr>
+                  <th className="px-4 py-2 text-left font-medium">Category</th>
+                  <th className="px-4 py-2 text-right font-medium">Revenue</th>
+                  <th className="px-4 py-2 text-right font-medium w-1/3">
+                    Share
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {categories.slice(0, 5).map((c, i) => (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="px-4 py-2 text-slate-700">{c.category}</td>
+                    <td className="px-4 py-2 text-right font-mono text-slate-900">
+                      {formatCurrency(c.revenue)}
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2 justify-end">
+                        <div className="h-1.5 w-24 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-slate-800"
+                            style={{
+                              width: `${Math.min((c.revenue / kpis.totalRevenue) * 100, 100)}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="font-mono text-[10px] text-slate-400 w-8 text-right">
+                          {((c.revenue / kpis.totalRevenue) * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </StaggerItem>
     </StaggerContainer>
   );
 }

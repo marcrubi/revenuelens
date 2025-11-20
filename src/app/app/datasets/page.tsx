@@ -6,11 +6,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { FileSpreadsheet, Loader2, Plus, Trash2 } from "lucide-react";
-import {
-  HoverCard,
-  StaggerContainer,
-  StaggerItem,
-} from "@/components/ui/motion-wrappers";
+import { StaggerContainer, StaggerItem } from "@/components/ui/motion-wrappers";
 import { TableSkeleton } from "@/components/ui/skeletons";
 import type { DatasetView } from "@/types";
 import {
@@ -33,12 +29,9 @@ export default function DatasetsPage() {
 
   useEffect(() => {
     let isMounted = true;
-
     async function loadDatasets() {
       try {
         setLoading(true);
-
-        // 1. Verificación básica de usuario
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -48,8 +41,6 @@ export default function DatasetsPage() {
           return;
         }
 
-        // 2. Consulta OPTIMIZADA a la vista SQL
-        // IMPORTANTE: Requiere haber creado la vista 'datasets_with_counts' en Supabase
         const { data, error } = await supabase
           .from("datasets_with_counts")
           .select("*")
@@ -67,9 +58,7 @@ export default function DatasetsPage() {
         if (isMounted) setLoading(false);
       }
     }
-
     loadDatasets();
-
     return () => {
       isMounted = false;
     };
@@ -83,9 +72,7 @@ export default function DatasetsPage() {
         .from("datasets")
         .delete()
         .eq("id", datasetToDelete);
-
       if (error) throw error;
-
       setDatasets((prev) => prev.filter((d) => d.id !== datasetToDelete));
       toast.success("Dataset deleted");
     } catch {
@@ -96,7 +83,6 @@ export default function DatasetsPage() {
     }
   };
 
-  // Loading State unificado
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto">
@@ -105,79 +91,88 @@ export default function DatasetsPage() {
     );
   }
 
-  // Empty State
   if (datasets.length === 0) {
     return (
-      <StaggerContainer className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/50 p-12 text-center mt-8">
+      <StaggerContainer className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50/50 p-12 text-center mt-8 max-w-2xl mx-auto">
         <StaggerItem>
-          <div className="flex h-12 w-12 mx-auto items-center justify-center bg-white shadow-sm border border-slate-100 mb-4">
-            <FileSpreadsheet className="h-6 w-6 text-blue-600" />
+          <div className="h-10 w-10 mx-auto bg-white border border-slate-200 rounded flex items-center justify-center text-slate-400 mb-3 shadow-sm">
+            <FileSpreadsheet className="h-5 w-5" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-900">
-            No datasets yet
+          <h3 className="text-sm font-semibold text-slate-900">
+            No datasets found
           </h3>
-          <p className="mt-2 text-sm text-slate-500 max-w-sm mx-auto mb-6">
-            Upload your first CSV file to start analyzing revenue.
+          <p className="mt-1 text-xs text-slate-500 mb-5 max-w-xs mx-auto">
+            Upload a CSV file to start analyzing your revenue data.
           </p>
-          <Button onClick={() => router.push("/app/datasets/new")}>
-            <Plus className="mr-2 h-4 w-4" /> Upload CSV
+          <Button
+            size="sm"
+            onClick={() => router.push("/app/datasets/new")}
+            className="bg-slate-900 h-8"
+          >
+            <Plus className="mr-2 h-3.5 w-3.5" /> Upload CSV
           </Button>
         </StaggerItem>
       </StaggerContainer>
     );
   }
 
-  // Tabla principal
   return (
-    <StaggerContainer className="space-y-6 max-w-5xl mx-auto">
-      <StaggerItem className="flex items-center justify-between">
+    <StaggerContainer className="space-y-4 max-w-5xl mx-auto">
+      <StaggerItem className="flex items-center justify-between pb-2 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Datasets</h1>
-          <p className="text-sm text-slate-500">Manage your sales sources.</p>
+          <h1 className="text-xl font-semibold text-slate-900 tracking-tight">
+            Datasets
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Manage your sales sources and imports.
+          </p>
         </div>
         <Button
+          size="sm"
           onClick={() => router.push("/app/datasets/new")}
-          className="shadow-sm"
+          className="bg-slate-900 text-white h-8 px-3 hover:bg-slate-800"
         >
-          <Plus className="mr-2 h-4 w-4" /> New
+          <Plus className="mr-2 h-3.5 w-3.5" /> New Dataset
         </Button>
       </StaggerItem>
 
       <StaggerItem>
-        <HoverCard className="overflow-hidden border-slate-200 shadow-sm p-0">
+        <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500 font-medium border-b border-slate-200">
+              <thead className="bg-slate-50/50 text-[10px] uppercase tracking-wider text-slate-500 font-bold border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-3">Name</th>
-                  <th className="px-6 py-3">Created</th>
-                  <th className="px-6 py-3 text-right">Rows</th>
-                  <th className="px-6 py-3 text-right">Actions</th>
+                  <th className="px-4 py-3 font-bold">Name</th>
+                  <th className="px-4 py-3 font-bold">Created</th>
+                  <th className="px-4 py-3 font-bold text-right">Rows</th>
+                  <th className="px-4 py-3 font-bold text-right w-20">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {datasets.map((d) => (
                   <tr
                     key={d.id}
-                    className="hover:bg-slate-50/80 transition-colors"
+                    className="hover:bg-slate-50 transition-colors group"
                   >
-                    <td className="px-6 py-4 font-medium text-slate-900">
+                    <td className="px-4 py-3 font-medium text-slate-900">
                       {d.name}
                     </td>
-                    <td className="px-6 py-4 text-slate-500">
+                    <td className="px-4 py-3 text-slate-500 font-mono text-xs">
                       {new Date(d.created_at).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 text-right text-slate-500 font-mono text-xs">
+                    <td className="px-4 py-3 text-right text-slate-900 font-mono text-xs">
                       {d.rows_count?.toLocaleString() ?? "0"}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-4 py-3 text-right">
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon"
                         onClick={() => setDatasetToDelete(d.id)}
-                        className="text-slate-400 hover:text-red-600"
+                        className="h-7 w-7 text-slate-400 hover:text-red-600 hover:bg-red-50"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </td>
                   </tr>
@@ -185,36 +180,39 @@ export default function DatasetsPage() {
               </tbody>
             </table>
           </div>
-        </HoverCard>
+        </div>
       </StaggerItem>
 
-      {/* Modal de Confirmación */}
       <AlertDialog
         open={!!datasetToDelete}
         onOpenChange={(open) => !open && setDatasetToDelete(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete dataset?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-lg">
+              Delete dataset?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm">
               This will permanently remove the dataset and all its sales data.
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting} className="text-xs h-8">
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
                 confirmDelete();
               }}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 text-xs h-8"
               disabled={isDeleting}
             >
               {isDeleting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin" />
               ) : (
-                "Delete"
+                "Delete Permanently"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

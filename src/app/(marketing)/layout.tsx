@@ -1,30 +1,13 @@
 // src/app/(marketing)/layout.tsx
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import '../globals.css';
-
-const inter = Inter({
-    subsets: ['latin'],
-    variable: '--font-sans',
-});
-
-export const metadata: Metadata = {
-    title: 'RevenueLens',
-    description: 'Understand your sales. Predict your revenue.',
-};
-
-export default function RootLayout({
-                                       children,
-                                   }: {
-    children: React.ReactNode;
+export default function MarketingLayout({
+  children,
+}: {
+  children: React.ReactNode;
 }) {
-    return (
-        <html lang="en">
-        <body
-            className={`${inter.variable} font-sans bg-background text-foreground antialiased`}
-        >
-        {children}
-        </body>
-        </html>
-    );
+  return (
+    <div className="flex min-h-screen flex-col bg-white text-slate-900">
+      {/* Este layout solo envuelve el contenido, ya hereda html/body del Root */}
+      {children}
+    </div>
+  );
 }

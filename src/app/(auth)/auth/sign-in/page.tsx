@@ -143,6 +143,13 @@ export default function SignInPage() {
               className="font-medium text-blue-600 hover:underline"
             >
               Sign up
+            </Link>{" "}
+            or{" "}
+            <Link
+              href="/"
+              className="font-medium text-blue-600 hover:underline"
+            >
+              learn more
             </Link>
           </p>
         </div>
@@ -182,17 +189,10 @@ export default function SignInPage() {
             <label className="text-sm font-medium text-slate-700">
               Password
             </label>
-            <Link
-              href="/auth/reset-password"
-              className="text-xs text-blue-600 hover:underline"
-            >
-              Forgot password?
-            </Link>
           </div>
           <input
             type="password"
             autoComplete="current-password"
-            // Eliminado minLength para evitar bloqueos innecesarios en login
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
@@ -200,6 +200,12 @@ export default function SignInPage() {
             }}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           />
+          <Link
+            href="/auth/reset-password"
+            className="text-xs text-blue-600 hover:underline"
+          >
+            Forgot password?
+          </Link>
         </div>
 
         {error && (
