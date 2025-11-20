@@ -1,7 +1,6 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Card } from "@/components/ui/card";
 
 // 1. Contenedor de Cascada (Stagger)
 // Usamos esto para envolver la página entera o rejillas grandes.
@@ -56,20 +55,5 @@ export const StaggerItem = ({
     >
       {children}
     </motion.div>
-  );
-};
-
-export const HoverCard = ({
-  children,
-  className,
-  ...props
-}: React.ComponentProps<typeof Card>) => {
-  return (
-    <Card
-      className={`h-full transition-colors duration-200 border border-slate-200 shadow-none hover:border-slate-300 bg-white ${className}`}
-      {...props}
-    >
-      {children}
-    </Card>
   );
 };

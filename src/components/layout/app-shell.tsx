@@ -1,6 +1,6 @@
+// src/components/layout/app-shell.tsx
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -18,7 +18,7 @@ import {
   SheetContent,
   SheetTitle,
   SheetTrigger,
-} from "@/components/ui/sheet"; // AÑADIDO SheetTitle
+} from "@/components/ui/sheet";
 import {
   Database,
   LayoutDashboard,
@@ -39,70 +39,24 @@ const navItems = [
   { href: "/app/account", label: "Account", icon: Settings },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+// Definimos las props que vienen del servidor
+interface AppShellProps {
+  children: React.ReactNode;
+  user: User;
+  profile: Profile | null;
+}
+
+export function AppShell({ children, user, profile }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
-  const [workspaceName, setWorkspaceName] = useState("My workspace");
-  const [profile, setProfile] = useState<Profile | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function initApp() {
-      try {
-        const { data: authData } = await supabase.auth.getUser();
-        if (!isMounted) return;
-
-        if (!authData.user) {
-          return;
-        }
-
-        setUser(authData.user);
-
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select(`*, businesses ( name )`)
-          .eq("id", authData.user.id)
-          .single();
-
-        if (isMounted && profileData) {
-          setProfile(profileData as unknown as Profile);
-          const businessName = profileData.businesses?.name;
-          if (businessName) setWorkspaceName(businessName);
-        }
-      } catch (err) {
-        console.error("Error init app", err);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    }
-
-    initApp();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-3 animate-pulse">
-          <div className="h-8 w-8 rounded-md bg-slate-200" />
-          <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
-            Loading...
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // YA NO HAY ESTADO DE LOADING NI USEEFFECT PARA DATOS
+  // El servidor ya nos dio el usuario y el perfil.
 
   const email = user?.email ?? "";
   const displayName = profile?.full_name || email.split("@")[0];
   const initials = getInitials(profile?.full_name, email);
+  const workspaceName = profile?.businesses?.name || "My workspace";
 
   return (
     <div className="flex min-h-screen bg-[#F9FAFB]">
@@ -176,7 +130,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-56 p-0 bg-white">
-                {/* Título oculto para accesibilidad */}
                 <div className="hidden">
                   <SheetTitle>Menu</SheetTitle>
                 </div>
@@ -224,7 +177,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-4">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                {/* AÑADIDO: cursor-pointer y hover para que parezca clicable */}
                 <button className="flex items-center gap-2 outline-none group cursor-pointer rounded-full py-1 pl-2 pr-1 hover:bg-slate-100 transition-colors">
                   <div className="text-right hidden sm:block">
                     <p className="text-xs font-medium text-slate-700 leading-none group-hover:text-slate-900">
@@ -260,7 +212,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   className="text-red-600 text-xs cursor-pointer focus:bg-red-50"
                   onClick={async () => {
                     await supabase.auth.signOut();
-                    router.refresh();
+                    router.refresh(); // Importante para limpiar caché de router
+                    router.replace("/auth/sign-in");
                   }}
                 >
                   <LogOut className="mr-2 h-3.5 w-3.5" /> Sign out

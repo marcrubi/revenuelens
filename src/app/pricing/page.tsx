@@ -1,4 +1,4 @@
-import Link from "next/link"; // <--- NO OLVIDES ESTE IMPORT
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { MarketingHeader } from "@/components/layout/marketing-header";
 
@@ -6,7 +6,6 @@ export default function PricingPage() {
   return (
     <main className="min-h-screen bg-white">
       <MarketingHeader />
-
       <section className="mx-auto max-w-6xl px-4 py-16">
         <div className="max-w-2xl text-center mx-auto">
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900">

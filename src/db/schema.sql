@@ -93,3 +93,27 @@ SELECT
 FROM datasets d
          LEFT JOIN sales s ON d.id = s.dataset_id
 GROUP BY d.id;
+
+-- Vista para Gráficas y Predicciones (Agregación diaria)
+CREATE OR REPLACE VIEW public.daily_metrics
+WITH (security_invoker = true) -- CRÍTICO: Respeta tus políticas RLS
+AS
+SELECT
+    dataset_id,
+    date,
+    SUM(amount) as revenue,
+    COUNT(id) as order_count
+FROM sales
+GROUP BY dataset_id, date;
+
+-- Vista para KPIs Rápidos (Totales)
+CREATE OR REPLACE VIEW public.dataset_kpis
+WITH (security_invoker = true)
+AS
+SELECT
+    dataset_id,
+    SUM(amount) as total_revenue,
+    COUNT(id) as total_orders,
+    COALESCE(AVG(amount), 0) as avg_ticket
+FROM sales
+GROUP BY dataset_id;

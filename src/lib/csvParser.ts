@@ -1,7 +1,6 @@
-// src/lib/csvParser.ts
 import Papa from "papaparse";
 
-// Tipo auxiliar para lo que vamos a insertar en Supabase
+// Tipo para la inserción en DB (alineado con tu tabla sales)
 export type SaleInsert = {
   dataset_id: string;
   date: string;
@@ -11,48 +10,65 @@ export type SaleInsert = {
   customer_id: string | null;
 };
 
-type RawCSVRow = Record<string, any>;
+// Interfaz interna para el row crudo del CSV
+interface CSVRow {
+  date?: string;
+  amount?: string;
+  revenue?: string;
+  total?: string;
+  product?: string;
+  productname?: string;
+  item?: string;
+  category?: string;
+  type?: string;
+  customerid?: string;
+  customer?: string;
+  [key: string]: string | undefined;
+}
 
-export function parseAndValidateCsv(
-  file: File,
+/**
+ * Parsea un string CSV, valida columnas y devuelve objetos listos para insertar.
+ * Funciona tanto en Cliente como en Servidor (Node.js).
+ */
+export function parseAndValidateCsvContent(
+  csvContent: string,
   datasetId: string,
 ): Promise<SaleInsert[]> {
   return new Promise((resolve, reject) => {
-    Papa.parse(file, {
+    Papa.parse(csvContent, {
       header: true,
       skipEmptyLines: true,
-      // Normalizamos headers igual que antes
-      transformHeader: (header) =>
-        header
+      transformHeader: (h) =>
+        h
           .toLowerCase()
           .trim()
           .replace(/[\s_]+/g, ""),
-
       complete: (results) => {
-        const parsedRows = results.data as RawCSVRow[];
+        const rows = results.data as CSVRow[];
 
-        if (!parsedRows || parsedRows.length === 0) {
-          return reject(new Error("CSV is empty"));
+        if (!rows || rows.length === 0) {
+          return reject(new Error("The CSV file is empty."));
         }
 
-        // 1. Validar columnas requeridas (date, amount/revenue/total)
-        const first = parsedRows[0];
-        const hasDate = "date" in first;
+        // 1. Validación de Cabeceras
+        const firstRow = rows[0];
+        const hasDate = "date" in firstRow;
         const hasAmount =
-          "amount" in first || "revenue" in first || "total" in first;
+          "amount" in firstRow || "revenue" in firstRow || "total" in firstRow;
 
         if (!hasDate || !hasAmount) {
           return reject(
-            new Error("CSV must contain 'date' and 'amount' columns."),
+            new Error(
+              "CSV must contain 'date' and 'amount' (or 'revenue') columns.",
+            ),
           );
         }
 
-        // 2. Mapear y Limpiar
-        const salesToInsert: SaleInsert[] = [];
+        // 2. Mapeo y Sanitización
+        const validSales: SaleInsert[] = [];
 
-        for (const row of parsedRows) {
+        for (const row of rows) {
           const rawDate = row.date;
-          // Busca revenue, amount o total
           let rawAmount = row.amount ?? row.revenue ?? row.total;
 
           if (!rawDate || rawAmount == null) continue;
@@ -65,9 +81,9 @@ export function parseAndValidateCsv(
           const amountNum = Number(rawAmount);
           if (isNaN(amountNum)) continue;
 
-          salesToInsert.push({
+          validSales.push({
             dataset_id: datasetId,
-            date: rawDate,
+            date: rawDate, // Supabase maneja bien strings ISO YYYY-MM-DD
             amount: amountNum,
             product: row.product || row.productname || row.item || null,
             category: row.category || row.type || null,
@@ -75,15 +91,13 @@ export function parseAndValidateCsv(
           });
         }
 
-        if (salesToInsert.length === 0) {
-          return reject(
-            new Error("No valid rows found. Check date/amount formats."),
-          );
+        if (validSales.length === 0) {
+          return reject(new Error("No valid rows found in CSV after parsing."));
         }
 
-        resolve(salesToInsert);
+        resolve(validSales);
       },
-      error: (err) => reject(err),
+      error: (err: Error) => reject(err),
     });
   });
 }
