@@ -1,4 +1,3 @@
-// src/app/(auth)/auth/callback/route.ts
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
@@ -25,7 +24,7 @@ export async function GET(request: Request) {
                 cookieStore.set(name, value, options),
               );
             } catch {
-              // Ignorar en Server Components
+              // Ignorar error en Server Components
             }
           },
         },
@@ -35,29 +34,49 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      // --- FIX CRÍTICO PARA VERCEL ---
-      // 1. Detectamos si estamos en localhost o producción
-      const forwardedHost = request.headers.get("x-forwarded-host"); // Host real en Vercel
+      // --- LÓGICA SEGURA Y ROBUSTA DE REDIRECCIÓN ---
+
+      const forwardedHost = request.headers.get("x-forwarded-host"); // Dominio real en Vercel
       const isLocal = requestUrl.origin.includes("localhost");
 
-      // 2. Construimos la URL base correcta
-      // Si es local, usamos el origin tal cual (http://localhost:3000)
-      // Si es prod, forzamos HTTPS y usamos el host real
-      const protocol = isLocal ? "http" : "https";
-      const host = forwardedHost || requestUrl.host;
+      let finalBaseUrl: string;
 
-      // 3. Limpiamos barras duplicadas por si acaso
-      const redirectUrl = `${protocol}://${host}${next}`;
+      if (isLocal) {
+        // En local, confiamos en el origin (http://localhost:3000)
+        finalBaseUrl = requestUrl.origin;
+      } else if (forwardedHost) {
+        // EN PRODUCCIÓN (Vercel):
+        // 1. Usamos el host real reportado por Vercel
+        // 2. Forzamos HTTPS (Crítico para que la cookie se guarde)
+        // 3. Validamos que sea un dominio nuestro para seguridad extra
 
-      console.log(`🟢 Callback éxito. Redirigiendo a: ${redirectUrl}`);
-      return NextResponse.redirect(redirectUrl);
-    } else {
-      console.error("🔴 Error en exchangeCodeForSession:", error);
+        const isVercel = forwardedHost.endsWith(".vercel.app");
+        // Añade tu dominio propio aquí cuando lo tengas: || forwardedHost === "tudominio.com"
+
+        if (isVercel) {
+          finalBaseUrl = `https://${forwardedHost}`;
+        } else {
+          // Si el host es raro/desconocido, usamos la variable de entorno segura o el origin como fallback
+          finalBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
+        }
+      } else {
+        // Fallback final
+        finalBaseUrl = requestUrl.origin;
+      }
+
+      // Limpieza de seguridad: Evitar dobles barras //
+      // Ejemplo: https://web.com/ + /app/dashboard -> https://web.com/app/dashboard
+      const cleanBase = finalBaseUrl.replace(/\/$/, "");
+      const cleanNext = next.startsWith("/") ? next : `/${next}`;
+
+      const finalUrl = `${cleanBase}${cleanNext}`;
+
+      console.log(`✅ Auth Callback OK. Redirigiendo a: ${finalUrl}`);
+      return NextResponse.redirect(finalUrl);
     }
   }
 
-  // Si falla, vuelta al login
-  // Usamos requestUrl.origin aquí porque si falla da igual, pero intentamos mantener consistencia
+  // Si falla el código o hay error
   return NextResponse.redirect(
     `${requestUrl.origin}/auth/sign-in?error=AuthCodeError`,
   );
