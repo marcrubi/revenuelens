@@ -4,10 +4,9 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-  // si viene un parametro "next" úsalo, si no, al dashboard
-  const next = searchParams.get("next") ?? "/app/dashboard";
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
+  const next = requestUrl.searchParams.get("next") ?? "/app/dashboard";
 
   if (code) {
     const cookieStore = await cookies();
@@ -26,7 +25,7 @@ export async function GET(request: Request) {
                 cookieStore.set(name, value, options),
               );
             } catch {
-              // Ignorar
+              // Ignorar en Server Components
             }
           },
         },
@@ -36,20 +35,30 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      // IMPORTANTE: Usamos el origin de la request para asegurar que no nos vamos a otro dominio
-      // y forzamos la redirección limpia.
-      const forwardedHost = request.headers.get("x-forwarded-host"); // Para Vercel
-      const isLocal = origin.includes("localhost");
+      // --- FIX CRÍTICO PARA VERCEL ---
+      // 1. Detectamos si estamos en localhost o producción
+      const forwardedHost = request.headers.get("x-forwarded-host"); // Host real en Vercel
+      const isLocal = requestUrl.origin.includes("localhost");
 
-      // En Vercel, a veces 'origin' es interno, mejor usar el host real si existe
-      const domain = isLocal
-        ? origin
-        : `https://${forwardedHost || new URL(origin).host}`;
+      // 2. Construimos la URL base correcta
+      // Si es local, usamos el origin tal cual (http://localhost:3000)
+      // Si es prod, forzamos HTTPS y usamos el host real
+      const protocol = isLocal ? "http" : "https";
+      const host = forwardedHost || requestUrl.host;
 
-      return NextResponse.redirect(`${domain}${next}`);
+      // 3. Limpiamos barras duplicadas por si acaso
+      const redirectUrl = `${protocol}://${host}${next}`;
+
+      console.log(`🟢 Callback éxito. Redirigiendo a: ${redirectUrl}`);
+      return NextResponse.redirect(redirectUrl);
+    } else {
+      console.error("🔴 Error en exchangeCodeForSession:", error);
     }
   }
 
-  // Si falla, devolvemos al usuario al login con un error
-  return NextResponse.redirect(`${origin}/auth/sign-in?error=AuthCodeError`);
+  // Si falla, vuelta al login
+  // Usamos requestUrl.origin aquí porque si falla da igual, pero intentamos mantener consistencia
+  return NextResponse.redirect(
+    `${requestUrl.origin}/auth/sign-in?error=AuthCodeError`,
+  );
 }
