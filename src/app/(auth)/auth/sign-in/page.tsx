@@ -1,30 +1,23 @@
+// src/app/(auth)/auth/sign-in/page.tsx
 "use client";
 
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react"; // Quitamos FormEvent y useRouter
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { GoogleIcon } from "@/components/ui/icons";
-// Reutilizamos el icono limpio
+import { supabase } from "@/lib/supabaseClient"; // Solo para Google OAuth
+import { login } from "./actions"; // <--- IMPORTAMOS LA ACCIÓN
 
 type Mode = "methods" | "email";
 
-function isValidEmail(value: string) {
-  return /\S+@\S+\.\S+/.test(value);
-}
-
 export default function SignInPage() {
   const [mode, setMode] = useState<Mode>("methods");
-  const router = useRouter();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  // Estados para feedback visual
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ELIMINADO: useEffect de checkSession (responsabilidad del Middleware)
-
+  // Google sigue siendo Client-side porque requiere redirección a URL externa
   async function handleGoogleSignIn() {
     setError(null);
     setIsLoading(true);
@@ -37,61 +30,34 @@ export default function SignInPage() {
       });
       if (error) throw error;
     } catch (err) {
-      console.error(err); // Log para ti
-      setError("Could not connect with Google. Please try again.");
+      console.error(err);
+      setError("Could not connect with Google.");
       setIsLoading(false);
     }
   }
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  // Manejador para el login por Email usando Server Action
+  async function handleEmailLogin(formData: FormData) {
+    setIsLoading(true);
     setError(null);
 
-    const trimmedEmail = email.trim();
+    // Llamamos a la Server Action
+    const result = await login(formData);
 
-    if (!trimmedEmail) {
-      setError("Please enter your email.");
-      return;
-    }
-
-    if (!isValidEmail(trimmedEmail)) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-
-    if (!password) {
-      setError("Please enter your password.");
-      return;
-    }
-
-    setIsLoading(true);
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email: trimmedEmail,
-      password,
-    });
-
-    if (error) {
-      setIsLoading(false);
-      // Mantenemos el mensaje genérico por seguridad, o el específico si prefieres UX sobre seguridad estricta
-      const msg = error.message.toLowerCase();
+    // Si la acción devuelve algo, es que hubo un error (porque si hay éxito, hace redirect)
+    if (result?.error) {
+      let msg = result.error.toLowerCase();
       if (
         msg.includes("invalid login credentials") ||
         msg.includes("invalid email")
       ) {
         setError("Invalid email or password.");
       } else {
-        setError(error.message);
+        setError(result.error);
       }
-      return;
+      setIsLoading(false);
     }
-
-    window.location.href = "/app/dashboard";
-
-    // Supabase Auth guarda la sesión automáticamente,
-    // pero forzamos la redirección visual para que sea instantánea
-    router.push("/app/dashboard");
-    router.refresh(); // Asegura que los Server Components (layout) se enteren del cambio
+    // Si no hay error, la redirección ocurre automáticamente en el servidor
   }
 
   // --- VISTAS ---
@@ -99,6 +65,7 @@ export default function SignInPage() {
   if (mode === "methods") {
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+        {/* ... (Cabecera igual que antes) ... */}
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="flex items-center gap-2">
             <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
@@ -126,17 +93,15 @@ export default function SignInPage() {
           </Button>
 
           <Button
-            onClick={() => {
-              setMode("email");
-              setError(null);
-            }}
+            onClick={() => setMode("email")}
             disabled={isLoading}
-            className="w-full bg-slate-900 text-white hover:bg-slate-800" // SIN rounded-full
+            className="w-full bg-slate-900 text-white hover:bg-slate-800"
           >
             Continue with email
           </Button>
         </div>
 
+        {/* ... (Footer igual) ... */}
         <div className="text-center text-xs text-slate-600">
           <p>
             Don&apos;t have an account?{" "}
@@ -145,13 +110,6 @@ export default function SignInPage() {
               className="font-medium text-blue-600 hover:underline"
             >
               Sign up
-            </Link>{" "}
-            or{" "}
-            <Link
-              href="/"
-              className="font-medium text-blue-600 hover:underline"
-            >
-              learn more
             </Link>
           </p>
         </div>
@@ -159,32 +117,27 @@ export default function SignInPage() {
     );
   }
 
-  // Mode: Email
+  // VISTA: Email (AQUÍ ESTÁ EL CAMBIO CLAVE EN EL FORM)
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
       <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex items-center gap-2">
-          <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
-          <span className="text-sm font-semibold tracking-tight">
-            RevenueLens
-          </span>
-        </div>
+        {/* ... Cabecera igual ... */}
         <h1 className="text-lg font-semibold">Log in with email</h1>
         <p className="text-sm text-slate-600">Welcome back.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {/* CAMBIO IMPORTANTE: 
+          Usamos 'action={handleEmailLogin}' en lugar de 'onSubmit'.
+          Esto pasa el FormData automáticamente.
+      */}
+      <form action={handleEmailLogin} className="space-y-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Email</label>
           <input
+            name="email" // NECESARIO para el FormData
             type="email"
             autoComplete="email"
-            autoFocus
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              setError(null);
-            }}
+            required
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           />
         </div>
@@ -196,13 +149,10 @@ export default function SignInPage() {
             </label>
           </div>
           <input
+            name="password" // NECESARIO para el FormData
             type="password"
             autoComplete="current-password"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              setError(null);
-            }}
+            required
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
           />
           <Link
@@ -222,7 +172,7 @@ export default function SignInPage() {
         <Button
           type="submit"
           disabled={isLoading}
-          className="w-full bg-slate-900 text-white hover:bg-slate-800" // SIN rounded-full
+          className="w-full bg-slate-900 text-white hover:bg-slate-800"
         >
           {isLoading ? "Logging in..." : "Log in"}
         </Button>
@@ -231,10 +181,7 @@ export default function SignInPage() {
       <div className="flex justify-between text-xs text-slate-600 mt-4">
         <button
           type="button"
-          onClick={() => {
-            setMode("methods");
-            setError(null);
-          }}
+          onClick={() => setMode("methods")}
           className="hover:underline"
         >
           ← Back
