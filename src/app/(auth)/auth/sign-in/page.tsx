@@ -1,23 +1,22 @@
 // src/app/(auth)/auth/sign-in/page.tsx
 "use client";
 
-import { useState } from "react"; // Quitamos FormEvent y useRouter
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { GoogleIcon } from "@/components/ui/icons";
-import { supabase } from "@/lib/supabaseClient"; // Solo para Google OAuth
-import { login } from "./actions"; // <--- IMPORTAMOS LA ACCIÓN
+import { supabase } from "@/lib/supabaseClient";
 
 type Mode = "methods" | "email";
 
 export default function SignInPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>("methods");
-
-  // Estados para feedback visual
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Google sigue siendo Client-side porque requiere redirección a URL externa
+  // Lógica Google
   async function handleGoogleSignIn() {
     setError(null);
     setIsLoading(true);
@@ -25,7 +24,8 @@ export default function SignInPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/app/dashboard`,
+          // Importante: Redirigir al callback para que intercambie el código por sesión
+          redirectTo: `${window.location.origin}/auth/callback`,
         },
       });
       if (error) throw error;
@@ -36,36 +36,49 @@ export default function SignInPage() {
     }
   }
 
-  // Manejador para el login por Email usando Server Action
-  async function handleEmailLogin(formData: FormData) {
+  // Lógica Email (Todo en cliente)
+  async function handleEmailLogin(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); // Prevenimos el submit nativo
     setIsLoading(true);
     setError(null);
 
-    // Llamamos a la Server Action
-    const result = await login(formData);
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
 
-    // Si la acción devuelve algo, es que hubo un error (porque si hay éxito, hace redirect)
-    if (result?.error) {
-      let msg = result.error.toLowerCase();
+    // 1. Login directo contra Supabase
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    // 2. Manejo de errores (Manteniendo tus mensajes exactos)
+    if (error) {
+      let msg = error.message.toLowerCase();
       if (
         msg.includes("invalid login credentials") ||
         msg.includes("invalid email")
       ) {
         setError("Invalid email or password.");
       } else {
-        setError(result.error);
+        setError(error.message);
       }
       setIsLoading(false);
+      return;
     }
-    // Si no hay error, la redirección ocurre automáticamente en el servidor
+
+    // 3. ÉXITO - Solución al Race Condition
+    // Refrescamos el router para que el Middleware vea la nueva cookie
+    router.refresh();
+    // Reemplazamos URL para ir al dashboard
+    router.replace("/app/dashboard");
   }
 
-  // --- VISTAS ---
+  // --- VISTAS (Interfaz Intacta) ---
 
   if (mode === "methods") {
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-        {/* ... (Cabecera igual que antes) ... */}
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="flex items-center gap-2">
             <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
@@ -101,7 +114,6 @@ export default function SignInPage() {
           </Button>
         </div>
 
-        {/* ... (Footer igual) ... */}
         <div className="text-center text-xs text-slate-600">
           <p>
             Don&apos;t have an account?{" "}
@@ -110,6 +122,13 @@ export default function SignInPage() {
               className="font-medium text-blue-600 hover:underline"
             >
               Sign up
+            </Link>{" "}
+            or{" "}
+            <Link
+              href="/"
+              className="font-medium text-blue-600 hover:underline"
+            >
+              learn more
             </Link>
           </p>
         </div>
@@ -117,24 +136,19 @@ export default function SignInPage() {
     );
   }
 
-  // VISTA: Email (AQUÍ ESTÁ EL CAMBIO CLAVE EN EL FORM)
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
       <div className="flex flex-col items-center gap-3 text-center">
-        {/* ... Cabecera igual ... */}
         <h1 className="text-lg font-semibold">Log in with email</h1>
         <p className="text-sm text-slate-600">Welcome back.</p>
       </div>
 
-      {/* CAMBIO IMPORTANTE: 
-          Usamos 'action={handleEmailLogin}' en lugar de 'onSubmit'.
-          Esto pasa el FormData automáticamente.
-      */}
-      <form action={handleEmailLogin} className="space-y-4">
+      {/* CAMBIO: onSubmit en lugar de action */}
+      <form onSubmit={handleEmailLogin} className="space-y-4">
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">Email</label>
           <input
-            name="email" // NECESARIO para el FormData
+            name="email"
             type="email"
             autoComplete="email"
             required
@@ -149,7 +163,7 @@ export default function SignInPage() {
             </label>
           </div>
           <input
-            name="password" // NECESARIO para el FormData
+            name="password"
             type="password"
             autoComplete="current-password"
             required
