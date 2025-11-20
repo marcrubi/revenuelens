@@ -1,4 +1,3 @@
-// src/components/layout/app-shell.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,335 +9,243 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu } from "lucide-react";
+import {
+  Database,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Settings,
+  TrendingUp,
+} from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import type { User } from "@supabase/supabase-js";
+import { Profile } from "@/types";
+import { cn, getInitials } from "@/lib/utils"; // Añadimos iconos al menú
 
+// Añadimos iconos al menú
 const navItems = [
-  { href: "/app/dashboard", label: "Dashboard" },
-  { href: "/app/datasets", label: "Datasets" },
-  { href: "/app/predictions", label: "Predictions" },
-  { href: "/app/account", label: "Account" },
+  { href: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/app/datasets", label: "Datasets", icon: Database },
+  { href: "/app/predictions", label: "Predictions", icon: TrendingUp },
+  { href: "/app/account", label: "Account", icon: Settings },
 ];
-
-function getDisplayName(user: User | null): string {
-  if (!user) return "User";
-
-  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
-  const fullName =
-    (meta.full_name as string | undefined) ||
-    (meta.name as string | undefined) ||
-    "";
-
-  if (fullName.trim()) {
-    return fullName.trim();
-  }
-
-  const email = user.email ?? "";
-  if (!email) return "User";
-
-  const localPart = email.split("@")[0];
-  if (!localPart) return "User";
-
-  return localPart.charAt(0).toUpperCase() + localPart.slice(1);
-}
-
-function getInitials(user: User | null): string {
-  if (!user) return "U";
-
-  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
-  const fullName =
-    (meta.full_name as string | undefined) ||
-    (meta.name as string | undefined) ||
-    "";
-
-  const source = fullName.trim() || user.email || "U";
-
-  const parts = source.split(/[.\s@_]+/).filter(Boolean);
-  if (parts.length === 0) return "U";
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-
-  const first = parts[0].charAt(0).toUpperCase();
-  const last = parts[parts.length - 1].charAt(0).toUpperCase();
-  return `${first}${last}`;
-}
-
-type Workspace = {
-  id: string;
-  name: string;
-};
-
-async function ensureWorkspace(user: User): Promise<Workspace | null> {
-  // 1) Intentar cargar el profile existente
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, full_name, business_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileError) {
-    // Si falla la query, continuamos e intentamos crear lo que falte
-    // pero no bloqueamos toda la app.
-  }
-
-  // Si el profile ya tiene business_id, intentamos recuperar ese business
-  if (profile?.business_id) {
-    const { data: business, error: businessError } = await supabase
-      .from("businesses")
-      .select("id, name")
-      .eq("id", profile.business_id)
-      .maybeSingle();
-
-    if (!businessError && business) {
-      return { id: business.id, name: business.name };
-    }
-    // Si falla o no existe, seguimos y creamos uno nuevo.
-  }
-
-  // 2) Crear un business por defecto
-  const displayName = getDisplayName(user);
-  const defaultName = displayName
-    ? `${displayName}'s workspace`
-    : "My workspace";
-
-  const { data: newBusiness, error: businessInsertError } = await supabase
-    .from("businesses")
-    .insert({
-      name: defaultName,
-    })
-    .select("id, name")
-    .single();
-
-  if (businessInsertError || !newBusiness) {
-    // No podemos hacer mucho más aquí; devolvemos null y dejaremos un nombre genérico
-    return null;
-  }
-
-  const businessId = newBusiness.id;
-
-  // 3) Asegurar que existe un profile enlazado a ese business
-  if (profile) {
-    if (profile.business_id !== businessId) {
-      // Intentamos actualizar el profile existente para apuntar al nuevo business
-      await supabase
-        .from("profiles")
-        .update({ business_id: businessId })
-        .eq("id", user.id);
-    }
-  } else {
-    // Crear profile nuevo
-    await supabase.from("profiles").insert({
-      id: user.id,
-      full_name: displayName || null,
-      business_id: businessId,
-    });
-  }
-
-  return { id: businessId, name: newBusiness.name };
-}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [workspaceName, setWorkspaceName] = useState("My workspace");
+  const [profile, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
-    async function checkAuthAndWorkspace() {
+    async function initApp() {
       try {
-        const { data, error } = await supabase.auth.getUser();
-
+        const { data: authData } = await supabase.auth.getUser();
         if (!isMounted) return;
 
-        if (error || !data?.user) {
-          router.replace("/auth/sign-in");
+        if (!authData.user) {
+          // Middleware debería manejar esto, pero por si acaso
           return;
         }
 
-        const currentUser = data.user;
-        setUser(currentUser);
+        setUser(authData.user);
 
-        // Asegurar que el usuario tiene workspace (business + profile)
-        const workspace = await ensureWorkspace(currentUser);
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select(`*, businesses ( name )`)
+          .eq("id", authData.user.id)
+          .single();
 
-        if (workspace && isMounted) {
-          setWorkspaceName(workspace.name || "My workspace");
+        if (isMounted && profileData) {
+          setProfile(profileData as any);
+          const businessName = profileData.businesses?.name;
+          if (businessName) setWorkspaceName(businessName);
         }
-
-        if (isMounted) {
-          setCheckingAuth(false);
-        }
-      } catch {
-        if (!isMounted) return;
-        router.replace("/auth/sign-in");
+      } catch (err) {
+        console.error("Error init app", err);
+      } finally {
+        if (isMounted) setLoading(false);
       }
     }
 
-    checkAuthAndWorkspace();
+    initApp();
 
     return () => {
       isMounted = false;
     };
-  }, [router]);
+  }, []);
 
-  if (checkingAuth) {
+  // Loading State para toda la app (Shell)
+  if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <span className="text-sm text-slate-500">Loading your workspace…</span>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3 animate-pulse">
+          <div className="h-10 w-10 rounded-md bg-slate-200" />
+          <p className="text-xs font-medium text-slate-400">
+            Loading RevenueLens...
+          </p>
+        </div>
       </div>
     );
   }
 
-  const displayName = getDisplayName(user);
   const email = user?.email ?? "";
-  const initials = getInitials(user);
+  const displayName = profile?.full_name || email.split("@")[0];
+  const initials = getInitials(profile?.full_name, email);
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
+    <div className="flex min-h-screen bg-slate-50/50">
       {/* SIDEBAR DESKTOP */}
-      <aside className="hidden w-60 border-r border-slate-200 bg-white/80 px-4 py-4 md:flex md:flex-col">
-        {/* Logo + nombre */}
-        <div className="mb-6 flex items-center gap-2">
-          <div className="h-7 w-7 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
-          <span className="text-sm font-semibold tracking-tight">
+      <aside className="hidden w-64 border-r border-slate-200 bg-white px-4 py-6 md:flex md:flex-col fixed inset-y-0 left-0 z-10">
+        <div className="mb-8 flex items-center gap-2 px-2">
+          <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500 shadow-sm" />
+          <span className="font-semibold tracking-tight text-slate-900">
             RevenueLens
           </span>
         </div>
 
-        {/* Navegación */}
-        <nav className="flex-1 space-y-1 text-sm">
+        <nav className="flex-1 space-y-1">
           {navItems.map((item) => {
             const active = pathname.startsWith(item.href);
+            const Icon = item.icon;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={[
-                  "flex items-center rounded-md px-2 py-1.5 transition-colors",
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all",
                   active
-                    ? "bg-slate-900 text-slate-50"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                ].join(" ")}
+                    ? "bg-slate-50 text-blue-600"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                )}
               >
+                <Icon
+                  className={cn(
+                    "h-4 w-4",
+                    active ? "text-blue-600" : "text-slate-400",
+                  )}
+                />
                 {item.label}
               </Link>
             );
           })}
         </nav>
 
-        {/* Footer pequeño (nombre empresa, etc.) */}
-        <div className="mt-4 border-t border-slate-200 pt-3 text-xs text-slate-500">
-          <p>{workspaceName}</p>
-          <p className="text-[11px]">Sales forecasting</p>
+        <div className="mt-auto border-t border-slate-100 pt-4 px-2">
+          <div className="mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            Workspace
+          </div>
+          <div
+            className="font-medium text-sm text-slate-900 truncate flex items-center gap-2"
+            title={workspaceName}
+          >
+            <div className="h-2 w-2 rounded-full bg-emerald-500" />
+            {workspaceName}
+          </div>
         </div>
       </aside>
 
-      {/* CONTENIDO */}
-      <div className="flex min-h-screen flex-1 flex-col">
+      {/* CONTENIDO PRINCIPAL */}
+      <div className="flex flex-1 flex-col md:pl-64 transition-all duration-300">
         {/* TOPBAR */}
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur">
-          <div className="mx-auto flex h-12 max-w-6xl items-center justify-between px-4">
-            {/* Izquierda: botón menú móvil + nombre negocio/página */}
-            <div className="flex items-center gap-2">
-              {/* Menú móvil */}
-              <div className="md:hidden">
-                <Sheet>
-                  <SheetTrigger asChild>
-                    <Button variant="outline" size="icon">
-                      <Menu className="h-4 w-4" />
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="left" className="p-4">
-                    <div className="mb-4 flex items-center gap-2">
-                      <div className="h-7 w-7 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
-                      <span className="text-sm font-semibold tracking-tight">
-                        RevenueLens
-                      </span>
-                    </div>
-                    <nav className="space-y-1 text-sm">
-                      {navItems.map((item) => {
-                        const active = pathname.startsWith(item.href);
-                        return (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            className={[
-                              "block rounded-md px-2 py-1.5",
-                              active
-                                ? "bg-slate-900 text-slate-50"
-                                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                            ].join(" ")}
-                          >
-                            {item.label}
-                          </Link>
-                        );
-                      })}
-                    </nav>
-                  </SheetContent>
-                </Sheet>
-              </div>
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white/80 px-4 backdrop-blur md:px-8">
+          <div className="flex items-center gap-3 md:hidden">
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="-ml-2">
+                  <Menu className="h-5 w-5 text-slate-600" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-64 p-0">
+                <div className="p-6">
+                  <div className="flex items-center gap-2 mb-8">
+                    <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
+                    <span className="font-semibold">RevenueLens</span>
+                  </div>
+                  <nav className="space-y-1">
+                    {navItems.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {item.label}
+                      </Link>
+                    ))}
+                  </nav>
+                </div>
+              </SheetContent>
+            </Sheet>
+            <span className="font-semibold text-slate-900 md:hidden">
+              RevenueLens
+            </span>
+          </div>
+          <div className="hidden md:block" />
 
-              <div className="hidden text-sm font-medium text-slate-700 md:block">
-                {workspaceName}
-              </div>
-            </div>
-
-            {/* Derecha: usuario */}
-            <div className="flex items-center gap-3">
-              <div className="hidden text-xs text-slate-500 sm:block">
-                <div className="font-medium text-slate-700">{displayName}</div>
-                <div>{email}</div>
-              </div>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="rounded-full"
+          {/* User Menu */}
+          <div className="flex items-center gap-4">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2 outline-none group">
+                  <div className="text-right hidden sm:block">
+                    <p className="text-sm font-medium text-slate-700 leading-none group-hover:text-slate-900">
+                      {displayName}
+                    </p>
+                  </div>
+                  <Avatar className="h-8 w-8 border border-slate-200 transition-transform group-hover:scale-105">
+                    <AvatarFallback className="bg-blue-50 text-blue-600 text-xs font-bold">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      {displayName}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground truncate">
+                      {email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/app/account"
+                    className="cursor-pointer w-full flex items-center"
                   >
-                    <Avatar className="h-7 w-7">
-                      <AvatarFallback>{initials}</AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuLabel>My account</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/app/account">Profile & account</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem disabled>Billing (soon)</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={async () => {
-                      await supabase.auth.signOut();
-                      router.push("/");
-                    }}
-                  >
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                    <Settings className="mr-2 h-4 w-4" /> Settings
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-red-600 focus:text-red-600 cursor-pointer focus:bg-red-50"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    router.refresh();
+                  }}
+                >
+                  <LogOut className="mr-2 h-4 w-4" /> Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
-        {/* SEPARADOR VISUAL */}
-        <Separator className="border-slate-200" />
-
-        {/* CONTENIDO PRINCIPAL */}
-        <main className="flex-1">
-          <div className="mx-auto max-w-6xl px-4 py-6">{children}</div>
+        <main className="flex-1 p-4 md:p-8 max-w-6xl mx-auto w-full animate-in fade-in duration-500">
+          {children}
         </main>
       </div>
     </div>

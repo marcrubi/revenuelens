@@ -4,6 +4,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { Button } from "@/components/ui/button";
 
 function isValidEmail(value: string) {
   return /\S+@\S+\.\S+/.test(value);
@@ -39,7 +40,9 @@ export default function ResetPasswordPage() {
         typeof window !== "undefined" ? window.location.origin : undefined;
 
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: origin ? `${origin}/auth/update-password` : undefined,
+        redirectTo: origin
+          ? `${origin}/auth/callback?next=/auth/update-password`
+          : undefined,
       });
 
       setIsSending(false);
@@ -98,13 +101,13 @@ export default function ResetPasswordPage() {
         {error && <p className="text-sm text-red-500">{error}</p>}
         {info && <p className="text-sm text-emerald-600">{info}</p>}
 
-        <button
+        <Button
           type="submit"
           disabled={isSending}
-          className="flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2.5 text-sm font-medium text-slate-50 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full bg-slate-900 hover:bg-slate-800 text-white"
         >
           {isSending ? "Sending reset link…" : "Send reset link"}
-        </button>
+        </Button>
       </form>
 
       <div className="flex justify-between text-xs text-slate-600">

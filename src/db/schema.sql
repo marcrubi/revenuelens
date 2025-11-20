@@ -53,3 +53,43 @@ create table if not exists public.subscriptions (
     current_period_end timestamptz,
     created_at timestamptz not null default now()
     );
+-- SEGURIDAD (RLS)
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE businesses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE datasets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Access business via profile" ON businesses FOR ALL USING (
+  id IN (SELECT business_id FROM profiles WHERE id = auth.uid())
+);
+CREATE POLICY "Create business" ON businesses FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+CREATE POLICY "Access datasets via business" ON datasets FOR ALL USING (
+  business_id IN (SELECT business_id FROM profiles WHERE id = auth.uid())
+);
+
+CREATE POLICY "Access sales via dataset" ON sales FOR ALL USING (
+  dataset_id IN (
+    SELECT id FROM datasets WHERE business_id IN (
+      SELECT business_id FROM profiles WHERE id = auth.uid()
+    )
+  )
+);
+    -- Añade esto a tu schema.sql para evitar desastres en nuevos deploys
+CREATE OR REPLACE VIEW public.datasets_with_counts
+WITH (security_invoker = true) -- ¡Recuerda esto para la seguridad!
+AS
+SELECT
+    d.id,
+    d.business_id,
+    d.name,
+    d.created_at,
+    count(s.id) AS rows_count
+FROM datasets d
+         LEFT JOIN sales s ON d.id = s.dataset_id
+GROUP BY d.id;

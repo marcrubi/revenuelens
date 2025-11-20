@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Inter } from "next/font/google";
+import { Toaster } from "sonner"; // <--- IMPORTANTE: Importamos el componente de notificaciones
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,7 +18,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        {children}
+        {/* AQUI AÑADIMOS EL TOASTER PARA QUE SE VEAN LAS ALERTAS */}
+        <Toaster position="bottom-right" richColors closeButton />
+      </body>
     </html>
   );
 }

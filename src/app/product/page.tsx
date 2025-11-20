@@ -1,42 +1,13 @@
 // src/app/product/page.tsx
 import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { MarketingHeader } from "@/components/layout/marketing-header";
 
 export default function ProductPage() {
   return (
     <main className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2">
-            <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
-            <span className="text-sm font-semibold tracking-tight">
-              RevenueLens
-            </span>
-          </div>
-          <nav className="hidden items-center gap-6 text-sm text-slate-600 md:flex">
-            <Link href="/" className="hover:text-slate-900">
-              Home
-            </Link>
-            <Link href="/pricing" className="hover:text-slate-900">
-              Pricing
-            </Link>
-          </nav>
-          <div className="flex items-center gap-3 text-sm">
-            <Link
-              href="/auth/sign-in"
-              className="text-slate-600 hover:text-slate-900"
-            >
-              Log in
-            </Link>
-            <Link
-              href="/auth/sign-up"
-              className="rounded-full bg-blue-600 px-4 py-1.5 font-medium text-white hover:bg-blue-500"
-            >
-              Sign up
-            </Link>
-          </div>
-        </div>
-      </header>
-
+      <MarketingHeader />
       <section className="mx-auto max-w-6xl px-4 pb-16 pt-10">
         <div className="max-w-3xl">
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
@@ -243,16 +214,14 @@ export default function ProductPage() {
         </section>
 
         <section className="mt-10 flex flex-wrap items-center justify-between gap-4">
-          <div className="text-xs text-slate-500">
-            Built on Next.js, Supabase and a simple forecasting layer you can
-            trust.
-          </div>
-          <Link
-            href="/auth/sign-up"
-            className="rounded-full bg-slate-900 px-5 py-2 text-xs font-medium text-slate-50 hover:bg-slate-800"
-          >
-            Create your account
-          </Link>
+          <section className="mt-10 ...">
+            <Link
+              href="/auth/sign-up"
+              className={cn(buttonVariants({ variant: "default" }))}
+            >
+              Create your account
+            </Link>
+          </section>
         </section>
       </section>
     </main>

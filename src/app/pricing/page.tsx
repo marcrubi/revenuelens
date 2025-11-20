@@ -1,42 +1,11 @@
 // src/app/pricing/page.tsx
-import Link from "next/link";
+import { Button } from "@/components/ui/button"; // Importar esto
+import { MarketingHeader } from "@/components/layout/marketing-header";
 
 export default function PricingPage() {
   return (
     <main className="min-h-screen bg-white">
-      <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2">
-            <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
-            <span className="text-sm font-semibold tracking-tight">
-              RevenueLens
-            </span>
-          </div>
-          <nav className="hidden items-center gap-6 text-sm text-slate-600 md:flex">
-            <Link href="/" className="hover:text-slate-900">
-              Home
-            </Link>
-            <Link href="/product" className="hover:text-slate-900">
-              Product
-            </Link>
-          </nav>
-          <div className="flex items-center gap-3 text-sm">
-            <Link
-              href="/auth/sign-in"
-              className="text-slate-600 hover:text-slate-900"
-            >
-              Log in
-            </Link>
-            <Link
-              href="/auth/sign-up"
-              className="rounded-full bg-blue-600 px-4 py-1.5 font-medium text-white hover:bg-blue-500"
-            >
-              Sign up
-            </Link>
-          </div>
-        </div>
-      </header>
-
+      <MarketingHeader />
       <section className="mx-auto max-w-6xl px-4 py-16">
         <div className="max-w-2xl text-center mx-auto">
           <h1 className="text-3xl font-semibold tracking-tight">
@@ -81,9 +50,9 @@ export default function PricingPage() {
         </div>
 
         <div className="mt-8 text-center">
-          <button className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100">
+          <Button variant="outline" className="rounded-md px-6">
             Join the waitlist
-          </button>
+          </Button>
           <p className="mt-2 text-[11px] text-slate-500">
             No credit card required. We&apos;ll email you when plans are
             available.
