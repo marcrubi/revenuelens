@@ -159,10 +159,13 @@ export default function SignInPage() {
 
   // Mode: Email
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-      <div className="text-center">
-        <div className="flex justify-center mb-3">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <div className="flex items-center gap-2">
           <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
+          <span className="text-sm font-semibold tracking-tight">
+            RevenueLens
+          </span>
         </div>
         <h1 className="text-lg font-semibold">Log in with email</h1>
         <p className="text-sm text-slate-600">Welcome back.</p>
