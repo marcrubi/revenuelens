@@ -63,21 +63,20 @@ export default function ResetPasswordPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in-0 slide-in-from-bottom-3 duration-300">
-      {/* Logo + título */}
-      <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex items-center gap-2">
+      {/* CABECERA ESTÁNDAR UNIFICADA */}
+      <div className="flex flex-col items-center gap-2 text-center">
+        <div className="flex items-center gap-2 mb-2">
           <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
-          <span className="text-sm font-semibold tracking-tight">
+          <span className="text-sm font-semibold tracking-tight text-slate-900">
             RevenueLens
           </span>
         </div>
-        <div>
-          <h1 className="text-lg font-semibold">Reset your password</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Enter the email you used for RevenueLens and we&apos;ll send you a
-            reset link.
-          </p>
-        </div>
+        <h1 className="text-lg font-semibold text-slate-900">
+          Reset your password
+        </h1>
+        <p className="text-sm text-slate-600">
+          Enter your email and we&apos;ll send you a link.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
@@ -94,12 +93,20 @@ export default function ResetPasswordPage() {
               setError(null);
               setInfo(null);
             }}
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 transition-all"
           />
         </div>
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
-        {info && <p className="text-sm text-emerald-600">{info}</p>}
+        {error && (
+          <div className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-100">
+            {error}
+          </div>
+        )}
+        {info && (
+          <div className="text-sm text-emerald-600 bg-emerald-50 p-2 rounded border border-emerald-100">
+            {info}
+          </div>
+        )}
 
         <Button
           type="submit"

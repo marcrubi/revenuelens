@@ -1,15 +1,15 @@
+// src/app/(auth)/auth/sign-up/page.tsx
 "use client";
 
-import { FormEvent, useState } from "react"; // Quitamos useEffect de redirección (mover a Middleware)
+import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { Button } from "@/components/ui/button"; // USAMOS ESTO SIEMPRE
+import { Button } from "@/components/ui/button";
 import { GoogleIcon } from "@/components/ui/icons";
 
 type Mode = "methods" | "email" | "password" | "success";
 
 function isValidEmail(value: string) {
-  // Regex simple está bien para UX, Supabase valida la realidad
   return /\S+@\S+\.\S+/.test(value);
 }
 
@@ -31,7 +31,6 @@ export default function SignUpPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          // Usamos una variable de entorno o window.location si es client-side puro
           redirectTo: `${window.location.origin}/app/dashboard`,
         },
       });
@@ -63,13 +62,10 @@ export default function SignUpPage() {
       setError("Please fill in both password fields.");
       return;
     }
-
     if (password.length < 8) {
-      // COHERENCIA: 8 caracteres
       setError("Password must be at least 8 characters long.");
       return;
     }
-
     if (password !== passwordConfirm) {
       setError("Passwords do not match.");
       return;
@@ -87,17 +83,15 @@ export default function SignUpPage() {
       });
 
       if (error) {
-        // Manejo específico de error de duplicado
         const msg = error.message.toLowerCase();
         if (msg.includes("registered") || msg.includes("exists")) {
           setError(EMAIL_EXISTS_MESSAGE);
         } else {
-          setError(error.message); // Muestra el error real de Supabase (weak pass, etc)
+          setError(error.message);
         }
         setIsLoading(false);
         return;
       }
-
       setMode("success");
       setIsLoading(false);
     } catch {
@@ -106,30 +100,28 @@ export default function SignUpPage() {
     }
   }
 
-  // --- Vistas ---
-
+  // --- VISTA 1: MÉTODOS ---
   if (mode === "methods") {
     return (
       <div className="space-y-6 animate-in fade-in duration-300">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex items-center gap-2">
-            {/* Un logo real sería mejor aquí */}
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="flex items-center gap-2 mb-2">
             <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
-            <span className="text-sm font-semibold tracking-tight">
+            <span className="text-sm font-semibold tracking-tight text-slate-900">
               RevenueLens
             </span>
           </div>
-          <div>
-            <h1 className="text-lg font-semibold">Create your account</h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Start predicting your revenue today.
-            </p>
-          </div>
+          <h1 className="text-lg font-semibold text-slate-900">
+            Create your account
+          </h1>
+          <p className="text-sm text-slate-600">
+            Start predicting your revenue today.
+          </p>
         </div>
 
         <div className="space-y-3">
           <Button
-            variant="outline" // Asumiendo que tu componente Button soporta variantes shadcn
+            variant="outline"
             onClick={handleGoogleSignUp}
             disabled={isLoading}
             className="w-full gap-2"
@@ -160,11 +152,20 @@ export default function SignUpPage() {
     );
   }
 
+  // --- VISTA 2: EMAIL ---
   if (mode === "email") {
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-        <div className="text-center">
-          <h1 className="text-lg font-semibold">Sign up with email</h1>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
+            <span className="text-sm font-semibold tracking-tight text-slate-900">
+              RevenueLens
+            </span>
+          </div>
+          <h1 className="text-lg font-semibold text-slate-900">
+            Sign up with email
+          </h1>
           <p className="text-sm text-slate-600">
             Enter your work email address.
           </p>
@@ -181,32 +182,46 @@ export default function SignUpPage() {
                 setEmail(e.target.value);
                 setError(null);
               }}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200 transition-all"
             />
           </div>
 
           {error && <p className="text-sm text-red-500">{error}</p>}
 
-          <Button type="submit" className="w-full bg-slate-900 text-white">
+          <Button
+            type="submit"
+            className="w-full bg-slate-900 text-white hover:bg-slate-800"
+          >
             Continue
           </Button>
         </form>
 
-        <button
-          onClick={() => setMode("methods")}
-          className="text-xs text-slate-500 hover:underline"
-        >
-          ← Back
-        </button>
+        <div className="text-center">
+          <button
+            onClick={() => setMode("methods")}
+            className="text-xs text-slate-500 hover:underline hover:text-slate-800"
+          >
+            ← Back
+          </button>
+        </div>
       </div>
     );
   }
 
+  // --- VISTA 3: PASSWORD ---
   if (mode === "password") {
     return (
       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-        <div className="text-center">
-          <h1 className="text-lg font-semibold">Set your password</h1>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
+            <span className="text-sm font-semibold tracking-tight text-slate-900">
+              RevenueLens
+            </span>
+          </div>
+          <h1 className="text-lg font-semibold text-slate-900">
+            Set your password
+          </h1>
           <p className="text-sm text-slate-600">
             Must be at least 8 characters.
           </p>
@@ -225,7 +240,7 @@ export default function SignUpPage() {
                 setPassword(e.target.value);
                 setError(null);
               }}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200 transition-all"
             />
           </div>
           <div className="space-y-1.5">
@@ -239,7 +254,7 @@ export default function SignUpPage() {
                 setPasswordConfirm(e.target.value);
                 setError(null);
               }}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200 transition-all"
             />
           </div>
 
@@ -260,35 +275,48 @@ export default function SignUpPage() {
           <Button
             disabled={isLoading}
             type="submit"
-            className="w-full bg-slate-900 text-white"
+            className="w-full bg-slate-900 text-white hover:bg-slate-800"
           >
             {isLoading ? "Creating account..." : "Create account"}
           </Button>
         </form>
 
-        <button
-          onClick={() => setMode("email")}
-          className="text-xs text-slate-500 hover:underline"
-        >
-          ← Back
-        </button>
+        <div className="text-center">
+          <button
+            onClick={() => setMode("email")}
+            className="text-xs text-slate-500 hover:underline hover:text-slate-800"
+          >
+            ← Back
+          </button>
+        </div>
       </div>
     );
   }
 
-  // Success
+  // --- VISTA 4: SUCCESS ---
   return (
     <div className="space-y-6 text-center animate-in fade-in duration-500">
-      <div className="mx-auto h-12 w-12 bg-emerald-100 flex items-center justify-center text-emerald-600 text-xl">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500" />
+          <span className="text-sm font-semibold tracking-tight text-slate-900">
+            RevenueLens
+          </span>
+        </div>
+        <h1 className="text-lg font-semibold text-slate-900">
+          Check your email
+        </h1>
+      </div>
+
+      <div className="mx-auto h-12 w-12 bg-emerald-100 flex items-center justify-center text-emerald-600 text-xl rounded-full">
         ✉️
       </div>
-      <div>
-        <h1 className="text-lg font-semibold">Verify your email</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          We sent a link to <strong>{email}</strong>. Click it to activate your
-          account.
-        </p>
-      </div>
+
+      <p className="text-sm text-slate-600">
+        We sent a link to <strong>{email}</strong>.<br />
+        Click it to activate your account.
+      </p>
+
       <Link href="/auth/sign-in">
         <Button variant="outline" className="w-full">
           Back to Login
