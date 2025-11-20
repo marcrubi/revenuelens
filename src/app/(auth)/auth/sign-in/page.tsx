@@ -86,6 +86,8 @@ export default function SignInPage() {
       return;
     }
 
+    window.location.href = "/app/dashboard";
+
     // Supabase Auth guarda la sesión automáticamente,
     // pero forzamos la redirección visual para que sea instantánea
     router.push("/app/dashboard");

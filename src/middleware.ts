@@ -1,17 +1,16 @@
+// src/middleware.ts
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  // 1. Configuración de respuesta inicial
-  // Es necesario crear una respuesta vacía para poder manipular las cookies después
+  // 1. Crear respuesta inicial
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   });
 
-  // 2. Crear cliente de Supabase para el Middleware
-  // Esto permite leer la sesión del usuario desde las cookies de forma segura
+  // 2. Configurar Supabase
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -21,10 +20,11 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Esto actualiza las cookies tanto en la request como en la response
+          // Actualizar cookies en la request (para que el middleware las lea)
           cookiesToSet.forEach(({ name, value, options }) =>
             request.cookies.set(name, value),
           );
+          // Actualizar cookies en la response inicial (para enviarlas al navegador)
           response = NextResponse.next({
             request: {
               headers: request.headers,
@@ -38,59 +38,51 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  // 3. Obtener el usuario de manera segura
-  // getUser() es más seguro que getSession() en middleware
+  // 3. IMPORTANTE: Validar usuario. Esto refresca el token si es necesario.
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 4. DEFINIR RUTAS PROTEGIDAS Y PÚBLICAS
+  // 4. Lógica de Rutas
   const url = request.nextUrl.clone();
   const pathname = url.pathname;
 
-  // Caso A: El usuario NO está logueado
+  // Helper para redirigir MANTENIENDO las cookies
+  const safeRedirect = (path: string) => {
+    const newUrl = request.nextUrl.clone();
+    newUrl.pathname = path;
+    const redirectResponse = NextResponse.redirect(newUrl);
+
+    // CRÍTICO: Copiamos las cookies de la respuesta de Supabase a la redirección
+    const allCookies = response.cookies.getAll();
+    allCookies.forEach((c) => redirectResponse.cookies.set(c));
+
+    return redirectResponse;
+  };
+
+  // Caso A: No logueado intentando entrar a /app
   if (!user) {
-    // Si intenta entrar a cualquier ruta que empiece por /app (dashboard, datasets, etc.)
     if (pathname.startsWith("/app")) {
-      url.pathname = "/auth/sign-in";
-      // Opcional: Guardar a dónde quería ir para redirigirle después del login
-      // url.searchParams.set("next", pathname);
-      return NextResponse.redirect(url);
+      return safeRedirect("/auth/sign-in");
     }
   }
 
-  // Caso B: El usuario SÍ está logueado
+  // Caso B: Logueado intentando entrar a auth o home
   if (user) {
-    // Si intenta entrar a páginas de auth (login, signup) lo mandamos al dashboard
     if (
       pathname.startsWith("/auth/sign-in") ||
-      pathname.startsWith("/auth/sign-up")
+      pathname.startsWith("/auth/sign-up") ||
+      pathname === "/"
     ) {
-      url.pathname = "/app/dashboard";
-      return NextResponse.redirect(url);
-    }
-    if (pathname === "/") {
-      url.pathname = "/app/dashboard";
-      return NextResponse.redirect(url);
+      return safeRedirect("/app/dashboard");
     }
   }
 
-  // Si no se cumple ninguna redirección, dejamos pasar la petición
   return response;
 }
 
-// Configuración del Matcher:
-// Define en qué rutas se ejecuta este middleware.
-// Excluimos archivos estáticos, imágenes, favicon, etc. para no sobrecargar el servidor.
 export const config = {
   matcher: [
-    /*
-     * Coincide con todas las rutas request EXCEPTO las que empiezan por:
-     * - _next/static (archivos estáticos)
-     * - _next/image (optimización de imágenes)
-     * - favicon.ico (icono)
-     * - Y cualquier extensión de archivo común (svg, png, jpg, etc.)
-     */
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
