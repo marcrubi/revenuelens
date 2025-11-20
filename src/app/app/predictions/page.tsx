@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
-import { Sparkles, TrendingUp } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 import type { Dataset } from "@/types";
 import {
   HoverCard,
@@ -179,15 +179,9 @@ export default function PredictionsPage() {
             <Button
               onClick={handleGenerate}
               disabled={isGenerating}
-              className="rounded-full bg-blue-600 hover:bg-blue-700 h-10 px-6"
+              className="rounded-md bg-blue-600 hover:bg-blue-700 h-10 px-6"
             >
-              {isGenerating ? (
-                "Calculating..."
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" /> Generate Forecast
-                </>
-              )}
+              {isGenerating ? "Calculating..." : <>Generate Forecast</>}
             </Button>
           </div>
         </HoverCard>

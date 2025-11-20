@@ -51,7 +51,7 @@ export function TableSkeleton() {
           <Skeleton className="w-32 h-6" />
           <Skeleton className="w-48 h-4" />
         </div>
-        <Skeleton className="w-24 h-9 rounded-full" />
+        <Skeleton className="w-24 h-9 rounded-md" />
       </div>
       <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
         <div className="h-10 bg-slate-50 border-b border-slate-200" />

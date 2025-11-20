@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 import { toast } from "sonner";
 import { FileSpreadsheet, Loader2, Plus, Trash2 } from "lucide-react";
-import { HoverCard, StaggerContainer, StaggerItem } from "@/components/ui/motion-wrappers";
+import {
+  HoverCard,
+  StaggerContainer,
+  StaggerItem,
+} from "@/components/ui/motion-wrappers";
 import { TableSkeleton } from "@/components/ui/skeletons";
 import type { DatasetView } from "@/types";
 import {
@@ -17,7 +21,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
 export default function DatasetsPage() {

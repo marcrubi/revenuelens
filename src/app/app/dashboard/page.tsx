@@ -5,29 +5,13 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabaseClient";
 import { BarChart3 } from "lucide-react";
-import {
-  HoverCard,
-  StaggerContainer,
-  StaggerItem,
-} from "@/components/ui/motion-wrappers";
+import { HoverCard, StaggerContainer, StaggerItem } from "@/components/ui/motion-wrappers";
 // Imports nuevos y refactorizados
 import { DashboardSkeleton } from "@/components/ui/skeletons";
-import {
-  type DashboardSummary,
-  processSalesData,
-  type RangeOption,
-} from "@/lib/analytics";
+import { type DashboardSummary, processSalesData, type RangeOption } from "@/lib/analytics";
 import { downloadCsv, formatCurrency } from "@/lib/utils";
 import type { Dataset, Sale } from "@/types"; // Recharts
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
 export default function DashboardPage() {
@@ -107,7 +91,7 @@ export default function DashboardPage() {
           .eq("dataset_id", selectedDatasetId);
 
         if (isMounted && rawSales) {
-          const processed = processSalesData(rawSales as any[], range);
+          const processed = processSalesData(rawSales as Sale[], range);
           setDashboardData(processed);
         }
       } catch {
