@@ -3,14 +3,14 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  // 1. Crear respuesta inicial
+  // 1. Creamos la respuesta base inicial.
+  // Es crucial usar esta misma instancia para transportar las cookies.
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   });
 
-  // 2. Configurar Supabase
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -20,11 +20,14 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Actualizar cookies en la request (para que el middleware las lea)
+          // IMPORTANTE: Actualizamos las cookies en la REQUEST para que
+          // el propio middleware vea los cambios si consultamos de nuevo.
           cookiesToSet.forEach(({ name, value, options }) =>
             request.cookies.set(name, value),
           );
-          // Actualizar cookies en la response inicial (para enviarlas al navegador)
+
+          // IMPORTANTE: Actualizamos la RESPONSE inicial.
+          // Esto prepara las cookies para ser enviadas al navegador.
           response = NextResponse.next({
             request: {
               headers: request.headers,
@@ -38,36 +41,45 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  // 3. IMPORTANTE: Validar usuario. Esto refresca el token si es necesario.
+  // 2. Refrescamos la sesión.
+  // OJO: Esto dispara el método setAll de arriba si el token necesitaba refresh.
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 4. Lógica de Rutas
+  // 3. Lógica de Rutas y Redirecciones "Seguras"
   const url = request.nextUrl.clone();
   const pathname = url.pathname;
 
-  // Helper para redirigir MANTENIENDO las cookies
+  // Función auxiliar para redirigir SIN PERDER COOKIES
+  // Si usas NextResponse.redirect() a secas, pierdes la sesión.
   const safeRedirect = (path: string) => {
-    const newUrl = request.nextUrl.clone();
-    newUrl.pathname = path;
-    const redirectResponse = NextResponse.redirect(newUrl);
+    const targetUrl = request.nextUrl.clone();
+    targetUrl.pathname = path;
 
-    // CRÍTICO: Copiamos las cookies de la respuesta de Supabase a la redirección
-    const allCookies = response.cookies.getAll();
-    allCookies.forEach((c) => redirectResponse.cookies.set(c));
+    // Creamos la respuesta de redirección
+    const redirectResponse = NextResponse.redirect(targetUrl);
+
+    // CLAVE DEL ÉXITO: Copiamos las cookies que Supabase haya podido poner
+    // en nuestra respuesta 'response' temporal hacia la 'redirectResponse'.
+    const currentCookies = response.cookies.getAll();
+    currentCookies.forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+    });
 
     return redirectResponse;
   };
 
-  // Caso A: No logueado intentando entrar a /app
-  if (!user) {
-    if (pathname.startsWith("/app")) {
-      return safeRedirect("/auth/sign-in");
-    }
+  // --- REGLAS DE PROTECCIÓN ---
+
+  // Caso A: Usuario NO logueado intentando entrar a zona privada (/app)
+  if (!user && pathname.startsWith("/app")) {
+    // Guardamos a dónde quería ir para redirigirle tras login (opcional)
+    // url.searchParams.set("next", pathname);
+    return safeRedirect("/auth/sign-in");
   }
 
-  // Caso B: Logueado intentando entrar a auth o home
+  // Caso B: Usuario SÍ logueado intentando entrar a auth (login/signup) o home
   if (user) {
     if (
       pathname.startsWith("/auth/sign-in") ||
@@ -78,6 +90,8 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Si no hay redirección, devolvemos la respuesta original que ya tiene
+  // las cookies actualizadas (si hubo refresh).
   return response;
 }
 

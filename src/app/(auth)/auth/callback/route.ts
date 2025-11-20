@@ -3,13 +3,13 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 export async function GET(request: Request) {
-  const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
-  const next = requestUrl.searchParams.get("next") ?? "/app/dashboard";
+  const { searchParams, origin } = new URL(request.url);
+  const code = searchParams.get("code");
+  // Si hay parámetro 'next', úsalo, si no, ve al dashboard
+  const next = searchParams.get("next") ?? "/app/dashboard";
 
   if (code) {
     const cookieStore = await cookies();
-
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
                 cookieStore.set(name, value, options),
               );
             } catch {
-              // Ignorar error en Server Components
+              // Ignorar errores de server component
             }
           },
         },
@@ -34,50 +34,24 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      // --- LÓGICA SEGURA Y ROBUSTA DE REDIRECCIÓN ---
+      // IMPORTANTE: Redirigimos a la URL absoluta.
+      // Al haberse ejecutado 'exchangeCodeForSession', las cookies ya se han
+      // intentado setear en el 'cookieStore'.
+      // Next.js se encargará de enviar el header Set-Cookie en esta redirección.
+      const forwardedHost = request.headers.get("x-forwarded-host");
+      const isLocal = origin.includes("localhost");
 
-      const forwardedHost = request.headers.get("x-forwarded-host"); // Dominio real en Vercel
-      const isLocal = requestUrl.origin.includes("localhost");
-
-      let finalBaseUrl: string;
-
-      if (isLocal) {
-        // En local, confiamos en el origin (http://localhost:3000)
-        finalBaseUrl = requestUrl.origin;
-      } else if (forwardedHost) {
-        // EN PRODUCCIÓN (Vercel):
-        // 1. Usamos el host real reportado por Vercel
-        // 2. Forzamos HTTPS (Crítico para que la cookie se guarde)
-        // 3. Validamos que sea un dominio nuestro para seguridad extra
-
-        const isVercel = forwardedHost.endsWith(".vercel.app");
-        // Añade tu dominio propio aquí cuando lo tengas: || forwardedHost === "tudominio.com"
-
-        if (isVercel) {
-          finalBaseUrl = `https://${forwardedHost}`;
-        } else {
-          // Si el host es raro/desconocido, usamos la variable de entorno segura o el origin como fallback
-          finalBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
-        }
-      } else {
-        // Fallback final
-        finalBaseUrl = requestUrl.origin;
+      let finalBaseUrl = isLocal ? origin : `https://${forwardedHost}`;
+      if (!isLocal && !forwardedHost) {
+        finalBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || origin;
       }
 
-      // Limpieza de seguridad: Evitar dobles barras //
-      // Ejemplo: https://web.com/ + /app/dashboard -> https://web.com/app/dashboard
-      const cleanBase = finalBaseUrl.replace(/\/$/, "");
+      // Limpiamos doble barra si existe
       const cleanNext = next.startsWith("/") ? next : `/${next}`;
-
-      const finalUrl = `${cleanBase}${cleanNext}`;
-
-      console.log(`✅ Auth Callback OK. Redirigiendo a: ${finalUrl}`);
-      return NextResponse.redirect(finalUrl);
+      return NextResponse.redirect(`${finalBaseUrl}${cleanNext}`);
     }
   }
 
-  // Si falla el código o hay error
-  return NextResponse.redirect(
-    `${requestUrl.origin}/auth/sign-in?error=AuthCodeError`,
-  );
+  // Si falla, vuelta al login
+  return NextResponse.redirect(`${origin}/auth/sign-in?error=AuthCodeError`);
 }
