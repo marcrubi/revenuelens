@@ -3,19 +3,46 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import {
+  HoverCard,
+  HoverCardTrigger,
+  HoverCardContent,
+} from "@/components/ui/hover-card";
 import { supabase } from "@/lib/supabaseClient";
 import { BarChart3, Loader2 } from "lucide-react";
 import { StaggerContainer, StaggerItem } from "@/components/ui/motion-wrappers";
 import { type DashboardSummary, type RangeOption } from "@/lib/analytics";
 import { downloadCsv, formatCurrency } from "@/lib/utils";
 import type { Dataset } from "@/types";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/empty-state";
 
 interface DashboardClientProps {
   initialDatasets: Dataset[];
   initialData: DashboardSummary | null;
+}
+
+function MetricLabel({ label, hint }: { label: string; hint?: string }) {
+  if (!hint) return <>{label}</>;
+
+  return (
+    <HoverCard>
+      <HoverCardTrigger className="inline-flex items-center gap-1 cursor-help">
+        <span>{label}</span>
+        <span className="text-[9px] text-slate-400">?</span>
+      </HoverCardTrigger>
+      <HoverCardContent className="w-56 text-[11px]">{hint}</HoverCardContent>
+    </HoverCard>
+  );
 }
 
 export default function DashboardClient({
@@ -242,15 +269,25 @@ export default function DashboardClient({
             {
               label: "Total Revenue",
               value: formatCurrency(kpis.totalRevenue),
+              hint: "Total revenue in the selected date range.",
             },
-            { label: "Orders", value: kpis.orders.toLocaleString() },
-            { label: "Avg. Ticket", value: formatCurrency(kpis.avgTicket) },
+            {
+              label: "Orders",
+              value: kpis.orders.toLocaleString(),
+              hint: "Number of orders (rows) in the selected period.",
+            },
+            {
+              label: "Avg. Ticket",
+              value: formatCurrency(kpis.avgTicket),
+              hint: "Average revenue per order in the selected period.",
+            },
             {
               label: "Top Product",
               value: kpis.topProduct || "—",
               sub: kpis.topProductShare
                 ? `${(kpis.topProductShare * 100).toFixed(1)}%`
                 : null,
+              hint: "Product with the highest revenue and its share over the total.",
             },
           ].map((stat, i) => (
             <div
@@ -258,7 +295,7 @@ export default function DashboardClient({
               className="bg-white rounded-lg border border-slate-200 p-4 flex flex-col justify-between min-h-[80px]"
             >
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                {stat.label}
+                <MetricLabel label={stat.label} hint={stat.hint} />
               </p>
               <div className="flex items-end gap-2 justify-between">
                 <p
